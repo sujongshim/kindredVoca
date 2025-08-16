@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kindred 대화형 단어장 (Firebase 버전)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family:'Noto Sans KR',sans-serif; background:#f8fafc; }
+    .tab-active{border-color:#4f46e5;color:#4f46e5;background:#eef2ff;font-weight:600}
+    .nav-tab{transition:.2s;border-radius:.5rem;flex-shrink:0}
+    .quiz-option.correct{background:#dcfce7;border-color:#22c55e}
+    .quiz-option.incorrect{background:#fee2e2;border-color:#ef4444}
+    #word-modal{transition:opacity .3s}
+    #modal-content{transition:transform .3s}
+    #game-canvas{background:linear-gradient(to bottom,#1e3a8a,#3730a3);border-radius:.5rem;border:2px solid #a5b4fc;width:100%;height:auto;aspect-ratio:8/5}
+    .bookmark-icon.bookmarked{color:#f59e0b}
+    .flashcard-container{perspective:1000px}
+    .flashcard{transition:transform .6s;transform-style:preserve-3d}
+    .flashcard.is-flipped{transform:rotateY(180deg)}
+    .flashcard-front,.flashcard-back{-webkit-backface-visibility:hidden;backface-visibility:hidden;position:absolute;width:100%;height:100%}
+    .flashcard-back{transform:rotateY(180deg)}
+    .nav-container::-webkit-scrollbar{display:none}
+    .nav-container{-ms-overflow-style:none;scrollbar-width:none}
+    .ranking-item{transition:all .3s}
+    .ranking-item:hover{transform:translateY(-2px);box-shadow:0 10px 25px rgba(0,0,0,.1)}
+    .rank-1{background:linear-gradient(135deg,#ffd700,#ffed4e)}
+    .rank-2{background:linear-gradient(135deg,#c0c0c0,#e5e5e5)}
+    .rank-3{background:linear-gradient(135deg,#cd7f32,#daa520)}
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="app" class="container mx-auto p-4 md:p-8 max-w-7xl">
+    <header class="text-center mb-10">
+      <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold text-indigo-700">Kindred Vocabulary</h1>
+      <p class="text-slate-600 mt-3 text-base sm:text-lg">옥타비아 버틀러의 소설 '킨드레드'를 통해 영어를 깊이 있게 탐험하세요.</p>
+    </header>
+
+    <div class="nav-container overflow-x-auto whitespace-nowrap bg-slate-100 p-2 rounded-xl mb-8 shadow-sm">
+      <nav class="flex gap-2">
+        <button data-tab="home" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">홈</button>
+        <button data-tab="vocabCards" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">단어</button>
+        <button data-tab="flashcards" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">플래시카드</button>
+        <button data-tab="bookmarks" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">북마크</button>
+        <button data-tab="quiz" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">단어 퀴즈</button>
+        <button data-tab="game" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">타이핑 게임</button>
+        <button data-tab="ranking" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">랭킹</button>
+        <button data-tab="vocabTable" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">단어목록</button>
+      
+        <button data-tab="guestbook" class="nav-tab px-5 py-2.5 border-b-2 border-transparent text-slate-600 hover:bg-white hover:text-indigo-600">방명록</button>
+      </nav>
+    </div>
+
+    <main id="content-area"></main>
+  </div>
+
+  <!-- 단어 상세 모달 -->
+  <div id="word-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
+    <div id="modal-content" class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full relative transform scale-95"></div>
+  </div>
+
+  <!-- 점수 저장 모달 -->
+  <div id="score-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 hidden z-50">
+    <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 max-w-md w-full">
+      <h3 class="text-2xl font-bold text-indigo-700 mb-4 text-center">🎉 새로운 기록 달성! 🎉</h3>
+      <p class="text-slate-600 mb-6 text-center">점수: <span id="final-score" class="font-bold text-2xl text-indigo-600"></span></p>
+      <div class="space-y-4">
+        <div>
+          <label for="nickname-input" class="block text-sm font-medium text-slate-700 mb-2">닉네임</label>
+          <input type="text" id="nickname-input" placeholder="닉네임을 입력하세요" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+        </div>
+        <div class="flex gap-3">
+          <button id="save-score-btn" class="flex-1 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-colors">저장</button>
+          <button id="cancel-score-btn" class="flex-1 bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-lg hover:bg-slate-400 transition-colors">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (모듈) -->
+  <script type="module">
+    /* ============================
+       🔥 Firebase 초기화 (필수)
+       ============================ */
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, increment, serverTimestamp, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+    import {
+      getAuth, signInAnonymously, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+
+    // TODO: 👉👉 여기 본인 Firebase 설정으로 교체하세요.
+    // const firebaseConfig = {
+    //   apiKey: "YOUR_API_KEY",
+    //   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    //   projectId: "YOUR_PROJECT_ID",
+    //   storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    //   messagingSenderId: "YOUR_SENDER_ID",
+    //   appId: "YOUR_APP_ID"
+    // };
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDFJzNowl7cx_3I7B-oXnwAi6dd0Wj7P8Q",
+        authDomain: "engcardgame-a3c01.firebaseapp.com",
+        projectId: "engcardgame-a3c01",
+        storageBucket: "engcardgame-a3c01.firebasestorage.app",
+        messagingSenderId: "270499273972",
+        appId: "1:270499273972:web:9be008423e7497db5152a1",
+        measurementId: "G-61EWRYF11V"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // (권장) 익명 로그인 사용 — 쓰기 규칙에서 auth != null 요구 시 필요
+    async function ensureAuth() {
+      return new Promise((resolve) => {
+        onAuthStateChanged(auth, async (user) => {
+          if (user) return resolve(true);
+          try { await signInAnonymously(auth); resolve(true); }
+          catch (e) { console.error("Anonymous sign-in failed:", e); resolve(false); }
+        });
+      });
+    }
+
+    /* ============================
+       🧠 기존 앱 코드 (간결화)
+       ============================ */
+
+    // --- 간단한 백엔드 래퍼: Firestore 우선, 실패 시 localStorage 폴백 ---
+    const RankingsAPI = {
+      async loadTop10() {
+        try {
+          await ensureAuth(); // 규칙에 따라 필요 없으면 삭제 가능
+          const q = query(collection(db, "rankings"), orderBy("score", "desc"), limit(10));
+          const snap = await getDocs(q);
+          const list = [];
+          snap.forEach(doc => {
+            const d = doc.data();
+            list.push({
+              nickname: d.nickname || "",
+              score: d.score || 0,
+              date: d.date || new Date().toLocaleDateString()
+            });
+          });
+          // Firestore 결과가 없으면 로컬 폴백
+          if (!list.length) return RankingsAPI._loadFromLocal();
+          // 정렬 보증
+          return list.sort((a,b)=>b.score-a.score).slice(0,10);
+        } catch (e) {
+          console.warn("Firestore loadTop10 실패, localStorage로 폴백:", e);
+          return RankingsAPI._loadFromLocal();
+        }
+      },
+      async saveScore(nickname, score) {
+        const payload = {
+          nickname, score, date: new Date().toLocaleDateString()
+        };
+        try {
+          await ensureAuth();
+          await addDoc(collection(db, "rankings"), payload);
+          return true;
+        } catch (e) {
+          console.warn("Firestore save 실패, localStorage로 폴백:", e);
+          const ok = RankingsAPI._saveToLocal(payload);
+          return ok;
+        }
+      },
+      _loadFromLocal() {
+        const raw = localStorage.getItem("kindredRankings");
+        if (!raw) return [];
+        try {
+          const arr = JSON.parse(raw) || [];
+          return arr.sort((a,b)=>b.score-a.score).slice(0,10);
+        } catch { return []; }
+      },
+      _saveToLocal(item) {
+        try {
+          const arr = RankingsAPI._loadFromLocal();
+          arr.push(item);
+          arr.sort((a,b)=>b.score-a.score);
+          localStorage.setItem("kindredRankings", JSON.stringify(arr.slice(0,10)));
+          return true;
+        } catch { return false; }
+      }
+    };
+
+    // ========== 데이터(단어장) ==========
+    const vocabData = {
+            "Prologue": [
+                { word: "persist", part: "v", pronunciation: "pərˈsɪst", meanings: { general: "(어려움에도 불구하고) 계속 ~하다, 고집하다, 지속하다. (파생어: persistence (n.) 끈기, persistent (adj.) 끈질긴)", novel: "노예제라는 비인간적인 힘에 맞서 자신의 정체성과 삶의 의지를 지키기 위한 정신적, 육체적 인내를 상징합니다.", example: "Despite the horrors she witnessed, Dana knew she had to persist.", translation: "그녀가 목격한 공포에도 불구하고, 데이나는 계속 버텨야만 한다는 것을 알았다." } },
+                { word: "coherently", part: "adv", pronunciation: "koʊˈhɪrəntli", meanings: { general: "논리 정연하게, 시종일관되게. (파생어: coherent (adj.) 일관성 있는, coherence (n.) 일관성)", novel: "트라우마를 언어로 전달하는 것의 어려움을 강조합니다. 데이나는 자신의 경험을 논리 정연하게 설명하려 애쓰지만, 고통으로 인해 기억은 파편화되어 있습니다.", example: "Finally, I awoke feeling able to talk to him coherently.", translation: "마침내 나는 정신을 차리고 그에게 조리 있게 말할 수 있었다." } },
+                { word: "might as well", part: "idiom", pronunciation: "", meanings: { general: "(더 나은 대안이 없으므로) ~하는 편이 낫다.", novel: "체념과 선택의 폭이 좁아진 상황을 강조합니다. 끔찍한 진실을 말하기보다 믿을 만한 거짓말을 하는 것이 낫다는 암울한 현실을 반영합니다.", example: "You convinced them that they might as well let me go.", translation: "당신은 그들에게 나를 그냥 보내주는 편이 낫겠다고 설득했지." } },
+                { word: "toy (with)", part: "v", pronunciation: "tɔɪ", meanings: { general: "(생각을) 심각하지 않게 해보다, (물건을) 만지작거리다, (사람/감정을) 장난삼아 다루다.", novel: "조종과 불평등한 권력 관계를 암시합니다. 권력자들이 노예들의 삶과 감정을 '장난감처럼' 다룰 것을 불길하게 예고합니다.", example: "He toyed with my hand for a moment silently.", translation: "그는 잠시 말없이 내 손을 만지작거렸다." } }
+            ],
+            "The River": [
+                { word: "loaf", part: "v", pronunciation: "loʊf", meanings: { general: "빈둥거리다, 하는 일 없이 어슬렁거리다. (파생어: loafer (n.) 게으름뱅이)", novel: "오직 백인 주인에게만 허락된 특권입니다. 노예에게 '빈둥거림'은 게으름의 증거이자 채찍질의 이유가 됩니다.", example: "Kevin had stopped when he got his office in order. Now he was closeted there either loafing or thinking.", translation: "케빈은 자기 사무실을 정리한 뒤 멈췄다. 이제 그는 그곳에 틀어박혀 빈둥거리거나 생각에 잠겨 있었다." } },
+                { word: "perversity", part: "n", pronunciation: "pərˈvɜːrsəti", meanings: { general: "괴팍함, 심술궂음, 비뚤어짐. (파생어: perverse (adj.) 비뚤어진)", novel: "노예제 사회의 비정상적이고 뒤틀린 논리를 압축적으로 보여줍니다. 선한 행동이 위협으로 받아들여지는 상황 자체가 '비뚤어짐'의 극치입니다.", example: "Just struggling with my own perversity.", translation: "나 자신의 심술궂음과 씨름하고 있을 뿐." } },
+                { word: "malevolent", part: "adj", pronunciation: "məˈlevələnt", meanings: { general: "악의 있는, 악의적인. (파생어: malevolence (n.) 악의)", novel: "앞으로 데이나가 마주할 진짜 악의, 즉 노예 소유주들의 체계적이고 의도적인 잔인함과 대조를 이룹니다.", example: "He gave me a look that I knew wasn't as malevolent as it seemed.", translation: "그는 내가 보기에도 그리 악의적으로 보이지 않는 표정을 지었다." } },
+                { word: "wade", part: "v", pronunciation: "weɪd", meanings: { general: "(물이나 진흙 속을) 헤치며 걷다.", novel: "자신의 의지와 상관없이 위험하고 낯선 과거의 역사 속으로 직접 발을 들여놓는 것을 상징합니다.", example: "I ran down to the river, waded into the water fully clothed, and swam quickly to the child.", translation: "나는 강으로 달려가 옷을 입은 채 물속을 헤치며 아이에게 재빨리 헤엄쳐 갔다." } },
+                { word: "resuscitation", part: "n", pronunciation: "rɪˌsʌsɪˈteɪʃn", meanings: { general: "소생, 부활; (특히) 인공호흡. (파생어: resuscitate (v.) 소생시키다)", novel: "현대 의학 지식을 이용한 생명 구조 행위입니다. 그녀가 과거 시대에 속하지 않은 외부인임을 명확히 보여주는 첫 사건입니다.", example: "I put him down on his back, tilted his head back, and began mouth-to-mouth resuscitation.", translation: "나는 그를 눕히고 머리를 뒤로 젖힌 다음, 입을 맞대고 인공호흡을 시작했다." } },
+                { word: "smother", part: "v", pronunciation: "ˈsmʌðər", meanings: { general: "질식시키다, (감정 등을) 억누르다.", novel: "물리적, 정신적 억압을 동시에 의미합니다. 노예제는 개인의 자유와 감정을 '질식시키는' 체제입니다.", example: "She grabbed him and nearly smothered him.", translation: "그녀는 그를 붙잡고 거의 질식시킬 뻔했다." } },
+                { word: "inflict on", part: "v", pronunciation: "ɪnˈflɪkt ɒn", meanings: { general: "(고통·피해 등을) 가하다, 안기다. (파생어: infliction (n.) 고통을 가함)", novel: "노예제 하에서 자행되는 폭력의 일방성과 부당함을 명확히 보여줍니다. 고통은 노예들에게 '가해지는' 것입니다.", example: "Ugly name to inflict on a reasonably nice-looking little kid.", translation: "꽤 잘생긴 어린 아이에게 붙이기에는 끔찍한 이름이다." } },
+                { word: "tentatively", part: "adv", pronunciation: "ˈtentətɪvli", meanings: { general: "잠정적으로, 머뭇거리며, 시험적으로. (파생어: tentative (adj.) 잠정적인)", novel: "데이나의 모든 행동은 '머뭇거리며' 이루어질 수밖에 없습니다. 과거 시대의 규칙을 모르기 때문입니다.", example: "He came over to me, touched me tentatively as though he wasn't sure I was real.", translation: "그는 내게 다가와, 내가 진짜인지 확신이 서지 않는 듯 조심스럽게 나를 만졌다." } },
+                { word: "humor", part: "v", pronunciation: "ˈhjuːmər", meanings: { general: "비위를 맞추다, 기분을 맞춰주다.", novel: "힘의 불균형 속에서 약자가 강자의 비위를 맞추며 자신을 지켜야 하는 상황을 예고합니다.", example: "Hell, I don't blame you for humoring me.", translation: "젠장, 내 비위를 맞춰주는 걸 탓하지는 않아." } },
+                { word: "recede", part: "v", pronunciation: "rɪˈsiːd", meanings: { general: "물러나다, 멀어지다, 약해지다. (파생어: recession (n.) 후퇴)", novel: "끔찍한 과거의 경험이 현재로 돌아오면 기억 속에서 희미해지는 트라우마의 속성을 보여줍니다.", example: "it's beginning to recede from me somehow.", translation: "어쩐지 내게서 점점 멀어지고 있는 것 같아." } }
+            ],
+            "The Fire": [
+                { word: "limbo", part: "n", pronunciation: "ˈlɪmboʊ", meanings: { general: "어중간한 상태, 망각의 상태.", novel: "데이나가 처한 실존적 상태를 묘사합니다. 과거에도 현재에도 온전히 속하지 못하고 두 세계 사이에 갇혀 있습니다.", example: "They made their own limbo and held me in it.", translation: "그들은 자신들만의 어중간한 상태를 만들어 나를 그 안에 가두었다." } },
+                { word: "abbreviated", part: "adj", pronunciation: "əˈbriːvieɪtɪd", meanings: { general: "축약된, 단축된. (파생어: abbreviate (v.) 줄여쓰다, abbreviation (n.) 축약)", novel: "노예들의 삶은 기본적인 인간 권리가 '축약된' 상태임을 암시합니다.", example: "I found myself sitting on a small bed sheltered by a kind of abbreviated dark green canopy.", translation: "나는 일종의 축소된 짙은 녹색 덮개로 가려진 작은 침대에 앉아 있었다." } },
+                { word: "canopy", part: "n", pronunciation: "ˈkænəpi", meanings: { general: "(침대 등의) 덮개, 차양.", novel: "웨일린 가문의 부유함과 그 이면의 폭력이라는 모순을 상징합니다.", example: "Rufus stood beside the ornate canopy bed, watching the curtains burn.", translation: "루퍼스는 화려한 캐노피 침대 옆에 서서, 불타는 커튼을 바라보고 있었다." } },
+                { word: "avert", part: "v", pronunciation: "əˈvɜːrt", meanings: { general: "(눈·얼굴 등을) 돌리다, 피하다. (파생어: aversion (n.) 혐오)", novel: "끔찍한 현실을 마주해야 하는 개인의 내적 갈등을 보여줍니다.", example: "My hasty act had done no harm. I could go home knowing that I had averted trouble for the second time.", translation: "나의 성급한 행동은 해를 끼치지 않았다. 나는 두 번째로 재앙을 피했다는 것을 알며 집으로 갈 수 있었다." } },
+                { word: "deflate", part: "v", pronunciation: "dɪˈfleɪt", meanings: { general: "공기를 빼다, (희망을) 꺾다. (파생어: deflation (n.) 수축)", novel: "노예제도가 인간의 희망과 자존심을 체계적으로 꺾는 시스템임을 의미합니다.", example: "The boy seemed to deflate. His shoulders sagged and he turned to stare into the fireplace.", translation: "소년은 기가 죽은 듯 보였다. 그의 어깨는 축 처졌고 그는 벽난로를 응시했다." } },
+                { word: "crisscross", part: "v", pronunciation: "ˈkrɪskrɔːs", meanings: { general: "종횡으로 교차하다.", novel: "등에 난 채찍 자국처럼 반복적인 폭력을 시각적으로 보여줍니다.", example: "He turned and pulled up his shirt so that I could see the crisscross of long red welts.", translation: "그는 돌아서서 셔츠를 걷어 올려 길고 붉은 매 자국들이 교차하는 것을 내게 보여주었다." } },
+                { word: "welt", part: "n", pronunciation: "welt", meanings: { general: "(채찍 등으로 맞아서) 부어 오른 자국, 매 자국.", novel: "노예제도의 폭력성을 가장 직접적으로 보여주는 단어입니다. 인간의 몸에 새겨진 억압과 고통의 증거입니다.", example: "He lifted his shirt to show the awful welts on his back.", translation: "그는 셔츠를 들어 올려 등에 난 끔찍한 매 자국을 보여주었다." } },
+                { word: "warily", part: "adv", pronunciation: "ˈwerəli", meanings: { general: "조심스럽게, 경계하며. (파생어: wary (adj.) 조심하는)", novel: "불신과 공포가 만연한 농장에서 살아남기 위한 생존 방식입니다.", example: "He looked at me warily.", translation: "그는 나를 조심스럽게 쳐다보았다." } },
+                { word: "ornately", part: "adv", pronunciation: "ɔːrˈneɪtli", meanings: { general: "화려하게, 화려하게 장식하여. (파생어: ornate (adj.) 화려한)", novel: "화려함 이면에 숨겨진 착취와 폭력의 현실을 병치시킵니다.", example: "a large Bible in an ornately carved, wooden chest", translation: "화려하게 조각된 나무 상자 안의 커다란 성경" } },
+                { word: "ante bellum", part: "adj", pronunciation: "ˌænti ˈbeləm", meanings: { general: "전쟁 전의, (특히) 미국 남북전쟁 전의.", novel: "단순한 시대 구분이 아니라, 데이나가 맞서 싸워야 하는 거대한 사회 시스템 전체를 지칭합니다.", example: "A name for whites who rode through the night in the ante bellum South...", translation: "남북전쟁 이전의 남부에서 밤새 말을 타고 달리던 백인들을 부르는 이름..." } },
+                { word: "descend", part: "v", pronunciation: "dɪˈsend", meanings: { general: "내려오다, (자손에게) 전해지다. (파생어: descendant (n.) 후손)", novel: "혈연과 유산, 그리고 세습되는 폭력과 신분을 의미합니다.", example: "Dana was shocked to realize she was descended from Rufus and Alice.", translation: "데이나는 자신이 루퍼스와 앨리스의 후손이라는 사실을 깨닫고 충격에 빠졌다." } },
+                { word: "incidentally", part: "adv", pronunciation: "ˌɪnsɪˈdentəli", meanings: { general: "부수적으로, 우연히. (파생어: incident (n.) 사건)", novel: "우연처럼 보이는 사건들 속에 숨겨진 필연적인 인과관계를 암시합니다.", example: "And, incidentally, he was playing with fire again, helping an intruder to escape.", translation: "그리고 우연히도, 그는 침입자가 탈출하는 것을 도우며 다시 불장난을 하고 있었다." } },
+                { word: "drapery", part: "n", pronunciation: "ˈdreɪpəri", meanings: { general: "휘장, 커튼류. (파생어: drape (v.) 덮다)", novel: "평범한 가정 용품이 위험의 시발점이 될 수 있음을 상징합니다.", example: "I could have safely thrown the draperies into it and let them burn.", translation: "나는 안전하게 커튼을 그 안에 던져 태울 수도 있었다." } },
+                { word: "skirt around", part: "v", pronunciation: "skɜːrt əˈraʊnd", meanings: { general: "(문제 등을) 회피하다.", novel: "불편한 진실을 마주하기를 거부하는 인간의 나약함을 보여줍니다.", example: "I skirted around a field of some grassy waist-high crop.", translation: "나는 허리 높이의 풀이 무성한 밭을 둘러 갔다." } },
+                { word: "hug", part: "v", pronunciation: "hʌɡ", meanings: { general: "껴안다, 바싹 붙어 가다.", novel: "인간적인 온기와 공포 속에서의 은신이라는 대조적인 의미를 가집니다.", example: "I hugged the side of the road, trying to suppress my nervousness.", translation: "나는 초조함을 억누르려 애쓰며 길가에 바싹 붙어 갔다." } },
+                { word: "transferal", part: "n", pronunciation: "trænsˈfɜːrəl", meanings: { general: "이전, 양도. (파생어: transfer (v.) 이전하다)", novel: "인간이 물건처럼 거래되는 노예 제도의 비인간성을 드러냅니다.", example: "I collapsed to my knees, desperately willing the dizziness to intensify, the transferal to come.", translation: "나는 무릎을 꿇고 쓰러져, 현기증이 심해지기를, 시간 이동이 오기를 간절히 바랐다." } },
+                { word: "splintering", part: "v", pronunciation: "ˈsplɪntərɪŋ", meanings: { general: "쪼개지다, 산산조각 나다. (파생어: splinter (n.) 파편)", novel: "물리적 파괴와 정신적 붕괴를 동시에 묘사합니다.", example: "There was a sound of splintering wood, and the door swung inward.", translation: "나무가 쪼개지는 소리가 나더니 문이 안으로 활짝 열렸다." } },
+                { word: "scramble away", part: "v", pronunciation: "ˈskræmbəl əˈweɪ", meanings: { general: "허둥지둥 달아나다.", novel: "폭력 앞에서 생존을 위해 본능적으로 도망치는 약자의 절박함을 보여줍니다.", example: "She was allowed to fall to the ground and scramble away, ignored by the men.", translation: "그녀는 땅에 넘어져 허둥지둥 달아나도록 내버려졌고, 남자들은 그녀를 무시했다." } },
+                { word: "hustle", part: "v", pronunciation: "ˈhʌsəl", meanings: { general: "서두르다, 거칠게 밀치다.", novel: "외부의 압력과 폭력에 의해 강제되는 노예들의 노동을 보여줍니다.", example: "They hustled the man to a tree so close to me that I lay flat on the ground.", translation: "그들은 그 남자를 내게 너무 가까운 나무로 거칠게 밀치고 가서 나는 땅에 납작 엎드렸다." } },
+                { word: "raucous", part: "adj", pronunciation: "ˈrɔːkəs", meanings: { general: "(소리가) 거슬리는, 시끄러운.", novel: "주로 백인 순찰대원들의 난폭하고 위협적인 소음을 묘사하여 공포 분위기를 조성합니다.", example: "There was raucous laughter.", translation: "거슬리는 웃음소리가 있었다." } },
+                { word: "obscenity", part: "n", pronunciation: "əbˈsenəti", meanings: { general: "외설, 음란한 말(행동). (파생어: obscene (adj.) 외설적인)", novel: "인간 존엄성에 대한 끔찍한 모독인 노예제도 그 자체가 하나의 거대한 '외설'임을 의미합니다.", example: "There were obscenities, more laughter.", translation: "음담패설과 더 많은 웃음소리가 있었다." } },
+                { word: "convulse", part: "v", pronunciation: "kənˈvʌls", meanings: { general: "경련을 일으키게 하다, 온몸을 뒤흔들다. (파생어: convulsion (n.) 경련)", novel: "극심한 고통이나 공포로 몸이 통제 불능 상태에 빠지는 것을 묘사합니다. 트라우마의 신체적 영향입니다.", example: "The man's body convulsed, but the only sound he made was a gasp.", translation: "남자의 몸은 경련했지만, 그가 낸 유일한 소리는 숨 막히는 소리뿐이었다." } },
+                { word: "resolve", part: "n", pronunciation: "rɪˈzɒlv", meanings: { general: "결심, 결의, 확고부동함. (파생어: resolute (adj.) 단호한)", novel: "생존과 저항의 핵심 요소입니다. 거대한 억압에 맞서 개인의 결의를 유지하기 위한 힘겨운 싸움을 그립니다.", example: "Then the man's resolve broke.", translation: "그때 그 남자의 결의가 무너졌다." } },
+                { word: "heave", part: "v", pronunciation: "hiːv", meanings: { general: "(무거운 것을) 들다, (가슴이) 들썩이다.", novel: "격렬한 감정 상태를 신체적으로 표현합니다.", example: "My stomach heaved, and I had to force myself to stay where I was and keep quiet.", translation: "속이 울렁거렸고, 나는 억지로 그 자리에 머물며 조용히 있어야 했다." } },
+                { word: "ostensibly", part: "adv", pronunciation: "ɒˈstensəbli", meanings: { general: "표면상으로는, 겉보기에는. (파생어: ostensible (adj.) 표면상의)", novel: "노예제 사회의 위선적인 명분과 그 이면에 숨겨진 잔혹한 진실 사이의 간극을 드러냅니다.", example: "Groups of young whites who ostensibly maintained order among the slaves.", translation: "표면상으로는 노예들 사이의 질서를 유지하는 젊은 백인들의 집단." } },
+                { word: "slanting off", part: "idiom", pronunciation: "", meanings: { general: "비스듬히 빗나가다, 벗어나다.", novel: "불편한 진실을 회피하려는 시도를 의미합니다.", example: "The patrol and its stumbling captive headed back to the road, slanting off toward the Weylin house.", translation: "순찰대와 비틀거리는 포로는 웨일린 집을 향해 비스듬히 길을 벗어나 돌아갔다." } },
+                { word: "grim", part: "adj", pronunciation: "ɡrɪm", meanings: { general: "엄숙한, 암울한, 비장한. (파생어: grimly (adv.) 엄하게)", novel: "노예제의 암울하고 절망적인 현실 그 자체를 묘사합니다.", example: "She looked tall and straight and grim and years older.", translation: "그녀는 키가 크고 곧았으며, 엄숙하고 나이 들어 보였다." } },
+                { word: "look contrite", part: "idiom", pronunciation: "", meanings: { general: "죄를 뉘우치는 듯 보이다. (파생어: contrition (n.) 뉘우침)", novel: "생존을 위해 억지로 복종하는 척하는 노예들의 심리 상태를 반영합니다.", example: "She looked contrite. 'You must be hungry now.'", translation: "그녀는 뉘우치는 표정을 지었다. '지금 배고프시겠군요.'" } },
+                { word: "wrench away", part: "v", pronunciation: "rentʃ əˈweɪ", meanings: { general: "비틀어 떼어내다, 뿌리치다.", novel: "폭력적인 상황에서 벗어나려는 필사적인 저항의 몸짓입니다.", example: "Surprise and pain made the man loosen his grip on me slightly, and I wrenched away.", translation: "놀람과 고통에 남자가 나를 잡은 손을 살짝 놓았고, 나는 뿌리쳤다." } },
+                { word: "bar one's way", part: "idiom", pronunciation: "", meanings: { general: "~의 길을 막다.", novel: "물리적, 사회적으로 노예들의 자유를 막는 모든 장벽을 상징합니다.", example: "I ran mindlessly toward the cabin door only to find Alice's mother there barring my way.", translation: "나는 무작정 오두막 문으로 달려갔지만, 앨리스의 어머니가 길을 막고 서 있는 것을 발견했다." } },
+                { word: "gouge", part: "v", pronunciation: "ɡaʊdʒ", meanings: { general: "(눈 등을) 파내다, 도려내다.", novel: "생존을 위한 가장 극단적이고 잔인한 저항의 형태입니다.", example: "I had only to move my fingers a little and jab them into the soft tissues, gouge away his sight.", translation: "나는 손가락을 조금만 움직여 부드러운 조직을 찌르고, 그의 시야를 파내기만 하면 되었다." } },
+                { word: "squeamishness", part: "n", pronunciation: "ˈskwiːmɪʃnəs", meanings: { general: "비위가 약함, 결벽증. (파생어: squeamish (adj.) 비위가 약한)", novel: "현대인의 도덕적 감수성이 과거의 잔혹함 앞에서 얼마나 무력한지를 보여줍니다.", example: "My squeamishness belonged in another age, but I'd brought it along with me.", translation: "나의 비위 약함은 다른 시대의 것이었지만, 나는 그것을 가지고 왔다." } },
+                { word: "rear", part: "v", pronunciation: "rɪr", meanings: { general: "(말 등이) 뒷다리로 일어서다, (머리를) 치켜들다.", novel: "폭력 앞에서 분노하거나 저항하는 순간적인 움직임을 묘사합니다.", example: "Then suddenly, for no reason that I could see, he reared above me, fist drawn back to hit me again.", translation: "그때 갑자기, 내가 알 수 없는 이유로, 그는 내 위로 솟아올라 다시 나를 때리려고 주먹을 뒤로 뺐다." } },
+                { word: "tree limb", part: "n", pronunciation: "triː lɪm", meanings: { general: "나뭇가지.", novel: "우연히 손에 쥔 저항의 도구. 생존을 위한 즉흥적인 무기입니다.", example: "the thing I had hit my head on was a heavy stick—a tree limb, perhaps.", translation: "내 머리를 부딪친 것은 무거운 막대기, 아마도 나뭇가지였을 것이다." } },
+                { word: "will", part: "v", pronunciation: "wɪl", meanings: { general: "~하기를 바라다, 의지로 ~하게 하다.", novel: "생존에 대한 강렬한 의지. 정신력으로 육체의 한계를 극복하려는 노력입니다.", example: "I caught hold of a tree and willed myself to stay conscious.", translation: "나는 나무를 붙잡고 의식을 잃지 않으려고 애썼다." } },
+                { word: "lunge up", part: "v", pronunciation: "lʌndʒ ʌp", meanings: { general: "위로 돌진하다, 튀어 오르다.", novel: "공격이나 방어를 위해 폭발적으로 몸을 움직이는 것을 묘사합니다.", example: "I could do anything. I lunged up toward his eyes.", translation: "나는 무엇이든 할 수 있었다. 나는 그의 눈을 향해 돌진했다." } },
+                { word: "weave in", part: "v", pronunciation: "wiːv ɪn", meanings: { general: "(이야기 등을) 엮어 넣다.", novel: "데이나가 자신의 경험과 역사적 사실을 엮어 하나의 이야기로 만드는 과정을 상징합니다.", example: "That I was hallucinating and weaving in the names of my ancestors?", translation: "내가 환각을 보고 조상들의 이름을 엮어 넣고 있었다는 건가?" } },
+                { word: "groggily", part: "adv", pronunciation: "ˈɡrɒɡɪli", meanings: { general: "(몸을 가누지 못하고) 비틀거리며, 그로기 상태로. (파생어: groggy (adj.) 비틀거리는)", novel: "육체적, 정신적 충격으로 인해 혼미한 상태를 묘사합니다.", example: "I rubbed my face groggily, and in a sudden slashing motion, drew the ruler across his abdomen.", translation: "나는 정신없이 얼굴을 문지르고, 갑작스럽게 베는 동작으로 그의 복부를 가로질러 자를 그었다." } },
+                { word: "a road atlas", part: "n", pronunciation: "ə roʊd ˈætləs", meanings: { general: "도로 지도책.", novel: "자유로 향하는 길을 찾으려는 희망과 그 길의 험난함을 동시에 상징합니다.", example: "I wish I had a road atlas for you.", translation: "너를 위한 도로 지도책이 있었으면 좋겠어." } },
+                { word: "be liable to", part: "idiom", pronunciation: "", meanings: { general: "~하기 쉽다, ~할 것 같다. (파생어: liability (n.) 책임)", novel: "언제든 닥칠 수 있는 위험과 죽음의 가능성을 암시합니다.", example: "If you run, you're likely to be shot.", translation: "만약 달아나면, 총에 맞기 쉽다." } }
+            ],
+            "The Fall": [
+                { word: "be out of place", part: "idiom", pronunciation: "", meanings: { general: "제자리에 있지 않다, 어울리지 않다.", novel: "데이나와 케빈이 과거 시대에 완전히 어울리지 않는 존재임을 나타냅니다.", example: "I think Kevin was as lonely and didn't fit in as I was when I met him.", translation: "케빈과 나는 우리가 만났을 때 나만큼이나 외롭고 어울리지 못하는 사람이었다고 생각한다." } },
+                { word: "wino", part: "n", pronunciation: "ˈwaɪnoʊ", meanings: { general: "알코올 중독자 (특히 값싼 포도주를 마시는).", novel: "현대 사회의 소외된 계층. 노예제 사회의 'nonpeople'과 비교되며, 시대와 상관없이 존재하는 인간 소외를 보여줍니다.", example: "Waiting with you were alcoholics trying to work themselves into a few more bottles.", translation: "당신과 함께 기다리는 사람들 중에는 술 몇 병 더 마시려고 일하는 알코올 중독자들이 있었다." } },
+                { word: "dispatcher", part: "n", pronunciation: "dɪˈspætʃər", meanings: { general: "배차원, 발송 담당자. (파생어: dispatch (v.) 파견하다)", novel: "노동력을 통제하고 분배하는 인물. 노예 시장의 감독관이나 경매인과 유사한 역할을 합니다.", example: "You sat and sat until the coordinator either sent you out on a job or sent you home.", translation: "당신은 배차원이 일자리를 주거나 집으로 보낼 때까지 앉아서 기다렸다." } },
+                { word: "nonpeople", part: "n", pronunciation: "ˈnɒnpiːpəl", meanings: { general: "인간 취급을 받지 못하는 사람들.", novel: "노예제 사회에서 흑인들이 처한 상황을 정확히 묘사합니다. 그들은 인격체가 아닌 재산으로 취급받았습니다.", example: "it was done by mindless people. Individuals not considered human rented for a few hours.", translation: "그것은 생각 없는 사람들에 의해 행해졌다. 몇 시간 동안 빌려 쓰는 인간 이하의 존재들." } },
+                { word: "trance", part: "n", pronunciation: "træns", meanings: { general: "무아지경, 혼수상태.", novel: "고된 노동과 절망 속에서 정신적으로 현실을 도피하는 상태를 의미합니다.", example: "Wine put him into some kind of daze, though, and he just sat and stared.", translation: "하지만 와인은 그를 일종의 무아지경에 빠뜨렸고, 그는 그저 앉아서 멍하니 쳐다보기만 했다." } },
+                { word: "sidle by", part: "v", pronunciation: "ˈsaɪdəl baɪ", meanings: { general: "슬그머니 옆으로 다가가다/지나가다.", novel: "주목받지 않고 위험을 피하려는 노예들의 조심스러운 행동 방식입니다.", example: "Buz moved past cautiously. 'Hey,' he said, low-voiced. 'Porn!'", translation: "버즈가 슬그머니 다가왔다. '이봐,' 그가 낮은 목소리로 말했다. '포르노!'" } },
+                { word: "exasperation", part: "n", pronunciation: "ɪɡˌzæspəˈreɪʃn", meanings: { general: "격분, 분노. (파생어: exasperate (v.) 격분시키다)", novel: "억압적인 상황에 대한 분노와 좌절감. 데이나가 자주 느끼는 감정입니다.", example: "I closed my eyes in frustration.", translation: "나는 분노에 차 눈을 감았다." } },
+                { word: "tactlessly", part: "adv", pronunciation: "ˈtæktləsli", meanings: { general: "재치 없게, 눈치 없이. (파생어: tactless (adj.) 재치 없는)", novel: "권력자들이 약자들의 감정을 고려하지 않고 무심코 내뱉는 말과 행동입니다.", example: "'You look older,' he said without thinking.", translation: "'너 늙어 보여,' 그가 눈치 없이 말했다." } },
+                { word: "mutter", part: "v", pronunciation: "ˈmʌtər", meanings: { general: "중얼거리다, 투덜거리다.", novel: "직접적으로 불만을 표출할 수 없는 노예들이 소극적으로 저항하는 방식입니다.", example: "'So do you,' I said under my breath.", translation: "'너도 그래,' 나는 중얼거렸다." } },
+                { word: "demote", part: "v", pronunciation: "diːˈmoʊt", meanings: { general: "강등시키다. (파생어: demotion (n.) 강등)", novel: "데이나가 생존을 위해 자신의 지위(케빈의 아내)를 노예로 '강등'시켜야 하는 상황입니다.", example: "Kevin, I think we'd better lower my status. In this time...", translation: "케빈, 내 생각엔 나를 강등시키는 게 낫겠어. 이 시대에서는..." } },
+                { word: "bicentennial quarter", part: "n", pronunciation: "ˌbaɪsenˈteniəl ˈkwɔːrtər", meanings: { general: "미국 독립 200주년 기념 25센트 동전.", novel: "데이나가 미래에서 왔다는 명백한 증거. 과거와 현재의 엄청난 시간적 간극을 상징합니다.", example: "He picked out a commemorative coin and handed it to Rufus.", translation: "그는 200주년 기념 쿼터 동전을 골라 루퍼스에게 건넸다." } },
+                { word: "depraved", part: "adj", pronunciation: "dɪˈpreɪvd", meanings: { general: "타락한, 부패한. (파생어: depravity (n.) 타락)", novel: "노예 소유주들의 도덕적 타락과 비인간적인 행위를 묘사합니다.", example: "Weylin didn't look especially vicious or corrupt.", translation: "웨일린은 특별히 사악하거나 타락해 보이지 않았다." } },
+                { word: "splint", part: "n", pronunciation: "splɪnt", meanings: { general: "부목.", novel: "원시적인 의료 환경을 상징합니다. 현대 의학의 부재를 보여줍니다.", example: "Kevin and I should have made a support for that leg, I thought belatedly.", translation: "케빈과 나는 그 다리에 부목을 대주었어야 했다고 뒤늦게 생각했다." } },
+                { word: "belatedly", part: "adv", pronunciation: "bɪˈleɪtɪdli", meanings: { general: "뒤늦게. (파생어: belated (adj.) 뒤늦은)", novel: "위험한 상황이 지난 후에야 올바른 판단을 하게 되는 데이나의 경험입니다.", example: "I thought about it later than I should have.", translation: "나는 뒤늦게 생각했다." } },
+                { word: "exasperate", part: "v", pronunciation: "ɪɡˈzæspəreɪt", meanings: { general: "몹시 화나게 하다.", novel: "데이나가 겪는 불합리한 상황들이 그녀를 격분시키는 것을 표현합니다.", example: "Weylin looked very annoyed.", translation: "웨일린은 화가 난 듯 보였다." } },
+                { word: "perennial", part: "adj", pronunciation: "pəˈreniəl", meanings: { general: "지속적인, 영원한.", novel: "노예제 사회에서 여성이 '영원한 아이'로 취급받는 가부장적 인식을 비판합니다.", example: "a society that considered women everlasting children.", translation: "여성을 영원한 아이로 여기는 사회." } },
+                { word: "ingest", part: "v", pronunciation: "ɪnˈdʒest", meanings: { general: "(음식·약 등을) 섭취하다. (파생어: ingestion (n.) 섭취)", novel: "과거 시대의 비위생적인 음식과 질병의 위험을 암시합니다.", example: "people casually, unknowingly ate all kinds of poorly preserved ill-cooked food.", translation: "사람들은 무심코, 무지하게 온갖 종류의 제대로 보존되지 않고 덜 익은 음식을 섭취했다." } },
+                { word: "acclimatize", part: "v", pronunciation: "əˈklaɪmətaɪz", meanings: { general: "(새로운 환경에) 적응하다. (파생어: acclimatization (n.) 적응)", novel: "데이나가 과거 시대의 폭력과 비인간성에 점차 무뎌지고 적응해가는 과정입니다. 생존을 위한 필수 과정이자 정체성을 잃을 수 있는 위험입니다.", example: "How easily we seemed to adapt.", translation: "우리가 얼마나 쉽게 적응하는 것처럼 보였는지." } },
+                { word: "wench", part: "n", pronunciation: "wentʃ", meanings: { general: "(구식, 경멸적) 젊은 여성, 계집.", novel: "흑인 여성을 성적 대상으로 비하하고 물건처럼 취급하는 노예 소유주들의 시각을 드러냅니다.", example: "Now here a likely young woman, called the boy on the stump.", translation: "자, 여기 쓸만한 계집이 있소, 라고 나무 그루터기 위의 소년이 외쳤다." } },
+                { word: "dab", part: "v", pronunciation: "dæb", meanings: { general: "가볍게 두드리다, 톡톡 바르다.", novel: "상처를 치료하거나 눈물을 닦는 등, 고통 속에서 나타나는 섬세하고 조심스러운 행동입니다.", example: "Margaret got up and lightly touched her eyes.", translation: "마거릿은 일어나 눈가를 톡톡 닦았다." } },
+                { word: "caress", part: "v", pronunciation: "kəˈres", meanings: { general: "어루만지다, 애무하다.", novel: "애정과 소유욕, 위선이 뒤섞인 복잡한 감정 표현입니다. 루퍼스가 앨리스에게 보이는 행동입니다.", example: "Carrie's fingers gently touched one of the drawings for a moment.", translation: "캐리의 손가락이 잠시 그림 중 하나를 어루만졌다." } },
+                { word: "be in for", part: "idiom", pronunciation: "", meanings: { general: "(불쾌한 일을) 당하게 되다.", novel: "앞으로 닥칠 고난과 위험을 예고합니다.", example: "if the people inside this cabin were black, they were almost certainly going to face trouble.", translation: "만약 이 오두막 안의 사람들이 흑인이라면, 그들은 거의 확실히 곤경에 처하게 될 것이다." } },
+                { word: "squarely", part: "adv", pronunciation: "ˈskwerli", meanings: { general: "정면으로, 똑바로.", novel: "피할 수 없는 현실이나 진실을 직시해야 하는 상황을 나타냅니다.", example: "He turned to face me directly.", translation: "그는 나를 정면으로 마주보기 위해 돌아섰다." } },
+                { word: "sear", part: "v", pronunciation: "sɪr", meanings: { general: "그슬리다, 낙인을 찍다.", novel: "채찍질이 남기는 끔찍한 고통과 지워지지 않는 상처를 생생하게 묘사합니다.", example: "But it came—like a hot iron across my back, burning into me through my light shirt, scorching my skin.", translation: "그러나 그것은 왔다—뜨거운 쇠가 등을 가로지르는 것처럼, 내 얇은 셔츠를 뚫고 살을 태우며, 내 피부를 그슬렸다." } }
+            ],
+            "The Fight": [
+                 { word: "bigotry", part: "n", pronunciation: "ˈbɪɡətri", meanings: { general: "편협함, 완고함 (특히 인종·종교에 대한). (파생어: bigot (n.) 편협한 사람)", novel: "노예제 사회를 지탱하는 뿌리 깊은 인종적 편견을 의미합니다.", example: "Now she lives in a big house in La Canada and quotes clichéd prejudice at me.", translation: "이제 그녀는 라 카냐다의 큰 집에 살면서 내게 진부한 편견을 인용한다." } },
+                 { word: "agonizingly", part: "adv", pronunciation: "ˈæɡənaɪzɪŋli", meanings: { general: "고통스럽게, 괴롭게. (파생어: agony (n.) 극심한 고통)", novel: "노예들이 겪는 육체적, 정신적 고통의 강도를 생생하게 전달합니다.", example: "The skin of my back stretched painfully, and the water got pinker.", translation: "등의 피부가 고통스럽게 늘어났고, 물은 더 분홍빛이 되었다." } },
+                 { word: "vindictive", part: "adj", pronunciation: "vɪnˈdɪktɪv", meanings: { general: "앙심을 품은, 보복하려는. (파생어: vindictiveness (n.) 앙심)", novel: "톰 웨일린이나 루퍼스 같은 인물들의 성격을 묘사합니다. 그들의 폭력은 개인적인 앙심과 비열함에서 비롯될 때가 많습니다.", example: "If Rufus was resentful enough, he could surely have the man killed.", translation: "만약 루퍼스가 충분히 앙심을 품었다면, 그는 분명 그 남자를 죽게 할 수 있었을 것이다." } },
+                 { word: "retaliation", part: "n", pronunciation: "rɪˌtæliˈeɪʃn", meanings: { general: "보복, 앙갚음. (파생어: retaliate (v.) 보복하다)", novel: "노예들의 저항이 어떤 끔찍한 보복으로 이어지는지를 보여줍니다.", example: "We both have too much opportunity for revenge.", translation: "우리 둘 다 보복할 기회가 너무 많다." } },
+                 { word: "meanness", part: "n", pronunciation: "ˈmiːnnəs", meanings: { general: "비열함, 인색함. (파생어: mean (adj.) 비열한)", novel: "타인의 고통을 즐기거나 자신의 이익을 위해 타인을 짓밟는, 노예제에 내재된 비인간적인 속성입니다.", example: "Your face looks like maybe you had enough white folks' cruelty for a while.", translation: "네 얼굴을 보니 당분간 백인들의 비열함은 충분히 겪은 것 같구나." } }
+            ],
+            "The Storm": [
+                { word: "harrowing", part: "adj", pronunciation: "ˈhæroʊɪŋ", meanings: { general: "끔찍한, 참혹한. (파생어: harrow (v.) 괴롭히다)", novel: "노예들이 겪는 지속적이고 끔찍한 정신적, 육체적 고통을 나타냅니다.", example: "When he did, it was always distressing.", translation: "그가 그랬을 때, 그것은 항상 끔찍했다." } },
+                { word: "supremacist", part: "n", pronunciation: "suːˈpreməsɪst", meanings: { general: "백인 우월주의자. (파생어: supremacy (n.) 우월)", novel: "노예제도를 정당화하는 인종차별적 이데올로기를 의미합니다.", example: "...the policies of the white power government.", translation: "...백인 우월주의 정부의 정책." } },
+                { word: "laudanum", part: "n", pronunciation: "ˈlɔːdənəm", meanings: { general: "아편팅크 (진통·진정제).", novel: "고통을 잊기 위해 약물에 의존하는 현실을 보여줍니다. 마거릿의 도피 수단입니다.", example: "You give her her opium tincture when she needs it...", translation: "그녀가 필요할 때 아편팅크를 주면..." } }
+            ],
+            "The Rope": [
+                { word: "haggard", part: "adj", pronunciation: "ˈhæɡərd", meanings: { general: "수척한, 초췌한.", novel: "오랜 고통과 마음고생으로 인해 지치고 쇠약해진 모습을 묘사합니다.", example: "He looked worn and weary.", translation: "그는 수척하고 지쳐 보였다." } },
+                { word: "prerogative", part: "n", pronunciation: "prɪˈrɒɡətɪv", meanings: { general: "특권, 특혜.", novel: "주인이 노예에게 갖는 절대적인 권리, 특히 여성 노예에 대한 성적 착취의 권리를 의미합니다.", example: "Insulting me was her special right. No trespassing.", translation: "나를 모욕하는 것은 그녀의 특권이었다. 침범 금지." } },
+                { word: "oblique", part: "adj", pronunciation: "əˈbliːk", meanings: { general: "비스듬한, 간접적인, 완곡한. (파생어: obliquely (adv.) 비스듬하게)", novel: "직접적으로 말할 수 없는 진실이나 감정을 암시적으로 표현하는 방식입니다.", example: "But he had never before said, 'I'm sorry, Dana.' ... His apologies had always been indirect.", translation: "하지만 그는 전에는 한 번도 '미안해, 데이나'라고 말한 적이 없었다. ... 그의 사과는 항상 완곡했다." } }
+            ],
+            "Epilogue": []
+        };
+
+    // ====== 전역 상태/DOM ======
+    const contentArea = document.getElementById('content-area');
+    const navTabs = document.querySelectorAll('.nav-tab');
+    const modal = document.getElementById('word-modal');
+    const modalContent = document.getElementById('modal-content');
+
+    let rankings = [];        // Top 10 캐시
+    let bookmarks = [];       // 북마크 로컬
+    let isTop10 = false;      // (사용 여부 유지)
+
+    // ====== 템플릿 ======
+    const templates = {
+      home: `
+        <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+          <h2 class="text-3xl font-bold mb-4 text-indigo-600">학습을 시작하세요</h2>
+          <p class="text-slate-600 mb-6 max-w-2xl mx-auto">이 단어장은 소설 '킨드레드'에 등장하는 핵심 어휘들을 깊이 있게 이해할 수 있도록 돕기 위해 만들어졌습니다.</p>
+          <div class="flex flex-wrap justify-center gap-4">
+            <button data-tab="vocabCards" class="nav-tab-link bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-colors">단어카드</button>
+            <button data-tab="flashcards" class="nav-tab-link bg-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-teal-700 transition-colors">플래시카드</button>
+          </div>
+        </div>
+      `,
+      vocabCards() {
+        const chapters = Object.keys(vocabData);
+        return `
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+              <h2 class="text-3xl font-bold text-indigo-600">단어</h2>
+              <div class="flex items-center gap-4 w-full md:w-auto">
+                <select id="chapter-select" class="p-2 border border-slate-300 rounded-md bg-white w-full md:w-48">
+                  <option value="all">모든 챕터</option>
+                  ${chapters.map(c=>`<option value="${c}">${c}</option>`).join('')}
+                </select>
+                <input type="text" id="search-input" placeholder="단어 검색..." class="p-2 border border-slate-300 rounded-md w-full md:w-48">
+              </div>
+            </div>
+            <div id="quiz-prompt-area" class="text-center my-6"></div>
+            <div id="vocab-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+          </div>
+        `;
+      },
+      flashcards() {
+        const chapters = Object.keys(vocabData);
+        return `
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+              <h2 class="text-3xl font-bold text-indigo-600">플래시카드</h2>
+              <select id="flashcard-chapter-select" class="p-2 border border-slate-300 rounded-md bg-white w-full md:w-48">
+                <option value="">챕터 선택</option>
+                ${chapters.map(c=>`<option value="${c}">${c}</option>`).join('')}
+              </select>
+            </div>
+            <div id="flashcard-area" class="flex flex-col items-center justify-center min-h-[400px]"></div>
+          </div>
+        `;
+      },
+      bookmarks: `
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+          <h2 class="text-3xl font-bold text-indigo-600 mb-6">북마크한 단어</h2>
+          <div id="bookmark-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+        </div>
+      `,
+      vocabTable: `
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+          <h2 class="text-3xl font-bold text-indigo-600 mb-6">단어목록</h2>
+          <input type="text" id="table-search-input" placeholder="단어 검색..." class="p-2 border border-slate-300 rounded-md w-full mb-6">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="border-b-2 border-slate-200 bg-slate-50">
+                <tr>
+                  <th class="p-4">WORD</th>
+                  <th class="p-4">PART OF SPEECH</th>
+                  <th class="p-4 hidden md:table-cell">일반적 의미</th>
+                  <th class="p-4 text-center">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="vocab-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      `,
+      quiz() {
+        return `
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div id="quiz-container">
+              <div id="quiz-selection" class="text-center">
+                <h2 class="text-3xl font-bold text-indigo-600 mb-4">단어 퀴즈</h2>
+                <p class="text-slate-600 mb-8">아래에서 퀴즈를 선택하여 학습한 단어를 확인해 보세요.</p>
+                <div class="flex flex-wrap justify-center gap-4">
+                  <button data-chapter="all" class="quiz-start-btn bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 transition-colors">종합 퀴즈 시작</button>
+                </div>
+                <div class="mt-6 border-t pt-6">
+                  <h3 class="text-xl font-semibold text-slate-700 mb-4">챕터별 퀴즈</h3>
+                  <div class="flex flex-wrap justify-center gap-2">
+                    ${Object.keys(vocabData).map(ch=>`<button data-chapter="${ch}" class="quiz-start-btn bg-slate-200 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors">${ch}</button>`).join('')}
+                  </div>
+                </div>
+              </div>
+              <div id="quiz-content" class="text-left hidden"></div>
+            </div>
+          </div>
+        `;
+      },
+      game: `
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+          <h2 class="text-3xl font-bold text-indigo-600 mb-6 text-center">🎮 타이핑 게임</h2>
+          <div class="text-center mb-6">
+            <p class="text-slate-600 mb-4">떨어지는 단어를 타이핑하여 점수를 얻으세요!</p>
+            
+            <button id="start-game" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 transition-colors">게임 시작</button>
+          </div>
+          <div class="text-center">
+            <canvas id="game-canvas" class="mx-auto"></canvas>
+            <div class="mt-4">
+              <input type="text" id="typing-input" placeholder="여기에 단어를 입력하세요" class="p-3 border-2 border-slate-300 rounded-lg w-full md:w-1/2 text-center text-xl" disabled>
+            </div>
+            <div class="mt-6 text-center">
+              <p class="text-slate-600 mb-2">현재 최고 기록</p>
+              <div id="current-top-score" class="text-2xl font-bold text-indigo-600">-</div>
+            </div>
+          </div>
+        </div>
+      `,
+      ranking: `
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+          <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <h2 class="text-3xl font-bold text-indigo-600">🏆 타이핑 게임 랭킹</h2>
+            <div class="flex gap-2">
+              <button id="refresh-rankings" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-colors">새로고침</button>
+            </div>
+          </div>
+          <div id="rankings-list" class="space-y-3">
+            <div class="text-center py-8">
+              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+              <p class="text-slate-600 mt-4">랭킹을 불러오는 중...</p>
+            </div>
+          </div>
+        </div>
+      `
+    };
+
+    // ==== 즐겨찾기 ====
+    function loadBookmarks(){
+      const saved = localStorage.getItem('kindredBookmarks');
+      bookmarks = saved ? JSON.parse(saved) : [];
+    }
+    function saveBookmarks(){ localStorage.setItem('kindredBookmarks', JSON.stringify(bookmarks)); }
+    function toggleBookmark(word){
+      const i = bookmarks.indexOf(word);
+      if (i>-1) bookmarks.splice(i,1); else bookmarks.push(word);
+      saveBookmarks();
+      const currentTab = document.querySelector('.tab-active').dataset.tab;
+      if (currentTab==='bookmarks') renderBookmarksPage();
+      else document.querySelectorAll(`.bookmark-icon[data-word="${word}"]`).forEach(el=>el.classList.toggle('bookmarked'));
+    }
+
+    function speak(word){
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(word);
+        u.lang = 'en-US'; window.speechSynthesis.speak(u);
+      } else { alert('음성 지원이 되지 않는 브라우저입니다.'); }
+    }
+
+    // ==== 카드/모달 ====
+    function createWordCard(word){
+      const card = document.createElement('div');
+      const isBookmarked = bookmarks.includes(word.word);
+      card.className = 'flex flex-col justify-between p-5 bg-white rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:shadow-lg hover:border-indigo-400 transition-all min-h-[140px]';
+      card.innerHTML = `
+        <div class="w-full">
+          <p class="text-lg font-bold text-indigo-700">${word.word}</p>
+          <p class="text-slate-500 text-sm">${word.part} / ${word.pronunciation||''}</p>
+        </div>
+        <div class="flex justify-end items-center mt-4 gap-2 w-full">
+          <button class="speak-icon text-slate-400 hover:text-indigo-600" data-word="${word.word}" title="발음 듣기">🔊</button>
+          <button class="bookmark-icon text-slate-400 hover:text-amber-500 ${isBookmarked?'bookmarked':''}" data-word="${word.word}" title="북마크">★</button>
+        </div>
+      `;
+      card.addEventListener('click', (e)=>{
+        if (!e.target.closest('button')) openWordModal(word);
+      });
+      return card;
+    }
+
+    function openWordModal(wordData){
+      const isBookmarked = bookmarks.includes(wordData.word);
+      modalContent.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div>
+            <h3 class="text-3xl font-bold text-indigo-700 mb-2">${wordData.word}</h3>
+            <p class="text-slate-500 mb-6">${wordData.part} / ${wordData.pronunciation||''}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button class="speak-icon text-slate-400 hover:text-indigo-600" data-word="${wordData.word}">🔊</button>
+            <button class="bookmark-icon text-slate-400 hover:text-amber-500 ${isBookmarked?'bookmarked':''}" data-word="${wordData.word}">★</button>
+            <button id="close-modal-inner" class="text-slate-500 hover:text-slate-800 text-3xl font-bold">&times;</button>
+          </div>
+        </div>
+        <div class="space-y-4 text-left max-h-[60vh] overflow-y-auto pr-4 mt-4">
+          <div>
+            <h4 class="font-bold text-lg text-teal-700 border-b-2 border-teal-200 pb-1 mb-2">일반적 의미</h4>
+            <p>${wordData.meanings.general}</p>
+          </div>
+          ${wordData.meanings.novel ? `
+          <div>
+            <h4 class="font-bold text-lg text-teal-700 border-b-2 border-teal-200 pb-1 mb-2">소설 속 의미</h4>
+            <p>${wordData.meanings.novel}</p>
+          </div>`:''}
+          <div>
+            <h4 class="font-bold text-lg text-teal-700 border-b-2 border-teal-200 pb-1 mb-2">소설 속 예제</h4>
+            <p class="bg-slate-100 p-4 rounded-md">
+              <em class="italic">"${wordData.meanings.example||''}"</em>
+              <br>
+              <span class="text-slate-600 text-sm mt-2 block">(${wordData.meanings.translation||''})</span>
+            </p>
+          </div>
+        </div>
+      `;
+      modal.classList.remove('hidden');
+      setTimeout(()=>{ modal.style.opacity=1; modalContent.style.transform='scale(1)'; },10);
+      document.getElementById('close-modal-inner').addEventListener('click', closeWordModal);
+    }
+    function closeWordModal(){
+      modal.style.opacity=0; modalContent.style.transform='scale(0.95)'; setTimeout(()=>modal.classList.add('hidden'),300);
+    }
+
+    // ====== 렌더링 ======
+    const templatesRenderers = {
+
+      setupGuestbook(){
+        const form = document.getElementById("guestbook-form");
+        const authorEl = document.getElementById("guestbook-author");
+        const textEl = document.getElementById("guestbook-text");
+        const sortEl = document.getElementById("guestbook-sort");
+        const listEl = document.getElementById("guestbook-list");
+
+        let unsub = null;
+        const resubscribe = () => {
+          if (unsub) unsub();
+          const [field, dir] = sortEl.value.split(":");
+          unsub = GuestbookAPI.subscribe({ orderByField: field, direction: dir }, (items) => {
+            if (!items.length) {
+              listEl.innerHTML = `<p class="text-center text-slate-500 py-10">아직 방명록이 없습니다. 첫 글을 남겨보세요!</p>`;
+              return;
+            }
+            listEl.innerHTML = items.map(item => {
+              const isMine = (item.uid && auth.currentUser && item.uid === auth.currentUser.uid);
+              return `
+              <div class="rounded-xl border border-slate-200 p-4 bg-slate-50">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="font-semibold text-indigo-700">${(item.author||"익명").replace(/</g,"&lt;")}${isMine? ' <span class="ml-1 text-xs text-slate-400">(내 글)</span>': ''}</div>
+                  <div class="text-xs text-slate-500">${item.createdAt?.toDate ? item.createdAt.toDate().toLocaleString() : new Date(item.createdAt||Date.now()).toLocaleString()}</div>
+                </div>
+                <p class="text-slate-700 whitespace-pre-wrap">${(item.text||"").replace(/</g,"&lt;")}</p>
+                <div class="flex gap-3 mt-3">
+                  <button ${isMine? 'disabled title="본인 글 투표 불가"' : ''} data-id="${item.id}" data-type="like" class="gb-like inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
+                    👍 <span>${item.likeCount||0}</span>
+                  </button>
+                  <button ${isMine? 'disabled title="본인 글 투표 불가"' : ''} data-id="${item.id}" data-type="dislike" class="gb-dislike inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
+                    👎 <span>${item.dislikeCount||0}</span>
+                  </button>
+                </div>
+              </div>`;
+            }).join("");
+
+            listEl.querySelectorAll(".gb-like,.gb-dislike").forEach(btn => {
+              btn.addEventListener("click", async (e) => {
+                const id = e.currentTarget.getAttribute("data-id");
+                const type = e.currentTarget.getAttribute("data-type");
+                const res = await GuestbookAPI.vote({ id, type });
+                if (res?.reason) alert(res.reason);
+              });
+            });
+          });
+        };
+
+        sortEl.addEventListener("change", resubscribe);
+        resubscribe();
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const author = authorEl.value.trim();
+          const text = textEl.value.trim();
+          try {
+            await GuestbookAPI.addEntry({ author, text });
+            textEl.value = "";
+          } catch (err) {
+            alert(err.message || "등록에 실패했습니다");
+          }
+        });
+      },
+
+      setupVocabCardsPage(){
+        renderVocabCards();
+        document.getElementById('chapter-select').addEventListener('change', (e)=>renderVocabCards(e.target.value, document.getElementById('search-input').value));
+        document.getElementById('search-input').addEventListener('input', (e)=>renderVocabCards(document.getElementById('chapter-select').value, e.target.value));
+      },
+      setupVocabTablePage(){
+        renderVocabTable();
+        document.getElementById('table-search-input').addEventListener('input', (e)=>renderVocabTable(e.target.value));
+      },
+      setupBookmarks(){ renderBookmarksPage(); },
+      setupQuiz(){ setupQuizPage(); },
+      async setupGame(){
+        setupGamePage();
+      },
+      async setupRanking(){
+        await loadRankings();
+        renderRankingPage();
+        const btn = document.getElementById('refresh-rankings');
+        btn?.addEventListener('click', async ()=>{
+          await loadRankings();
+          renderRankingPage();
+        });
+      }
+    };
+
+    function render(view){
+      contentArea.innerHTML = typeof templates[view]==='function' ? templates[view]() : templates[view];
+      navTabs.forEach(t=>t.classList.remove('tab-active'));
+      document.querySelector(`[data-tab="${view}"]`).classList.add('tab-active');
+
+      if (view==='vocabCards') templatesRenderers.setupVocabCardsPage();
+      else if (view==='vocabTable') templatesRenderers.setupVocabTablePage();
+      else if (view==='bookmarks') templatesRenderers.setupBookmarks();
+      else if (view==='quiz') templatesRenderers.setupQuiz();
+      else if (view==='game') templatesRenderers.setupGame();
+      else if (view==='flashcards') setupFlashcardsPage();
+      else if (view==='ranking') templatesRenderers.setupRanking();
+      else if (view==='guestbook') templatesRenderers.setupGuestbook();
+    }
+
+    // ====== 페이지별 동작 ======
+    function renderVocabCards(chapter='all', searchTerm=''){
+      const list = document.getElementById('vocab-list');
+      const prompt = document.getElementById('quiz-prompt-area');
+      if (!list || !prompt) return;
+
+      list.innerHTML='';
+      let words = (chapter==='all'?Object.values(vocabData).flat(): (vocabData[chapter]||[]))
+        .filter(w=>w.word.toLowerCase().includes(searchTerm.toLowerCase()));
+      prompt.innerHTML = (chapter!=='all' && words.length>0)
+        ? `<button id="start-chapter-quiz" data-chapter="${chapter}" class="bg-teal-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-teal-600 transition-colors">${chapter} 퀴즈 풀기</button>`
+        : '';
+
+      if (!words.length) {
+        list.innerHTML = `<p class="text-slate-500 col-span-full text-center py-10">해당하는 단어가 없습니다.</p>`;
+        return;
+      }
+      words.forEach(w=>list.appendChild(createWordCard(w)));
+    }
+
+    function renderBookmarksPage(){
+      const container = document.getElementById('bookmark-list');
+      if (!container) return;
+      container.innerHTML='';
+      const all = Object.values(vocabData).flat();
+      const items = all.filter(w=>bookmarks.includes(w.word));
+      if (!items.length){
+        container.innerHTML = `<p class="text-slate-500 col-span-full text-center py-10">북마크한 단어가 없습니다.</p>`;
+        return;
+      }
+      items.forEach(w=>container.appendChild(createWordCard(w)));
+    }
+
+    function renderVocabTable(searchTerm=''){
+      const body = document.getElementById('vocab-table-body');
+      if (!body) return;
+      const all = Object.values(vocabData).flat();
+      const filtered = searchTerm
+        ? all.filter(i => i.word.toLowerCase().includes(searchTerm.toLowerCase()) || (i.meanings.general||'').toLowerCase().includes(searchTerm.toLowerCase()))
+        : all;
+      body.innerHTML = filtered.map(i=>`
+        <tr class="hover:bg-slate-50">
+          <td class="p-4">${i.word}</td>
+          <td class="p-4">${i.part}</td>
+          <td class="p-4 hidden md:table-cell">${(i.meanings.general||'').slice(0,50)}...</td>
+          <td class="p-4 text-center">
+            <button class="bookmark-icon ${bookmarks.includes(i.word)?'bookmarked':''}" data-word="${i.word}">${bookmarks.includes(i.word)?'★':'☆'}</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // ==== 랭킹 ====
+    async function loadRankings(){
+      rankings = await RankingsAPI.loadTop10();
+      updateTopScoreDisplay();
+    }
+    function renderRankingPage(){
+      const el = document.getElementById('rankings-list');
+      if (!el) return;
+      if (!rankings.length){
+        el.innerHTML = `
+          <div class="text-center py-10">
+            <p class="text-slate-500 text-lg">아직 기록된 점수가 없습니다.</p>
+            <p class="text-slate-400 mt-2">타이핑 게임을 플레이하여 첫 번째 기록을 만들어보세요!</p>
+          </div>`;
+        return;
+      }
+      el.innerHTML = rankings.map((r,idx)=>{
+        const rankClass = idx<3 ? `rank-${idx+1}` : 'bg-white';
+        const icon = idx<3 ? ['🥇','🥈','🥉'][idx] : `${idx+1}`;
+        return `
+          <div class="ranking-item ${rankClass} p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <div class="text-2xl font-bold ${idx<3?'text-white':'text-indigo-600'}">${icon}</div>
+                <div>
+                  <div class="font-bold text-lg ${idx<3?'text-white':'text-slate-800'}">${r.nickname}</div>
+                  <div class="text-sm ${idx<3?'text-white/90':'text-slate-500'}">${r.date}</div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-3xl font-bold ${idx<3?'text-white':'text-indigo-600'}">${r.score}</div>
+                <div class="text-sm ${idx<3?'text-white/90':'text-slate-500'}">점수</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    function updateTopScoreDisplay(){
+      const top = document.getElementById('current-top-score');
+      if (top) top.textContent = rankings.length ? rankings[0].score : '-';
+    }
+
+    // ==== 퀴즈 ====
+    function startQuiz(container, chapter='all'){
+      const sel = document.getElementById('quiz-selection');
+      const content = document.getElementById('quiz-content');
+      sel?.classList.add('hidden'); content?.classList.remove('hidden');
+      const all = Object.values(vocabData).flat();
+      const pool = chapter==='all'? all : vocabData[chapter];
+      let idx=0, score=0, qs=[];
+
+      const title = chapter==='all' ? '종합 단어 퀴즈' : `${chapter} 퀴즈`;
+      content.innerHTML = `<h2 class="text-3xl font-bold text-indigo-600 mb-4 text-center">${title}</h2><div id="quiz-inner-content"></div>`;
+      const inner = document.getElementById('quiz-inner-content');
+
+      const shuffled = [...pool].sort(()=>0.5-Math.random());
+      const simple = s => (typeof s==='string'? s.replace(/\s*\(.*\)\s*/g,'').split('.')[0].trim() : '');
+
+      for (let i=0;i<Math.min(10,shuffled.length);i++){
+        const w = shuffled[i];
+        const type = Math.random()<0.5 ? 'defToWord' : 'wordToDef';
+        let qText, correct, opts=[];
+        const m = simple(w.meanings.general);
+        if (!m) continue;
+        if (type==='defToWord'){
+          qText = `다음 뜻을 가진 단어는?<br><strong class="text-indigo-600 text-lg mt-2 block">"${m}"</strong>`;
+          correct = w.word; opts.push(correct);
+          let others = all.filter(x=>x.word!==correct);
+          while (opts.length<4 && others.length){
+            const r = others.splice(Math.floor(Math.random()*others.length),1)[0];
+            if (r) opts.push(r.word);
+          }
+        } else {
+          qText = `다음 단어의 뜻으로 알맞은 것은?<br><strong class="text-indigo-600 text-lg mt-2 block">"${w.word}"</strong>`;
+          correct = m; opts.push(correct);
+          let others = all.filter(x=>x.word!==w.word);
+          while (opts.length<4 && others.length){
+            const r = others.splice(Math.floor(Math.random()*others.length),1)[0];
+            if (r && r.meanings?.general){
+              const mm = simple(r.meanings.general);
+              if (mm && !opts.includes(mm)) opts.push(mm);
+            }
+          }
+        }
+        if (opts.length<2) continue;
+        opts.sort(()=>0.5-Math.random());
+        qs.push({questionText:qText, options:opts, correctAnswer:correct});
+      }
+
+      function showQ(){
+        if (idx>=qs.length) return showResult();
+        const q=qs[idx];
+        inner.innerHTML = `
+          <div class="p-4 border-l-4 border-indigo-500 bg-indigo-50 mb-6 text-left">
+            <p class="font-semibold text-lg">질문 ${idx+1}/${qs.length}</p>
+            <p class="text-slate-700 mt-1">${q.questionText}</p>
+          </div>
+          <div class="space-y-3 text-left">
+            ${q.options.map(opt=>`<div class="quiz-option border-2 border-slate-300 p-3 rounded-lg cursor-pointer hover:bg-indigo-100">${opt}</div>`).join('')}
+          </div>
+          <div id="feedback" class="mt-4 text-center h-6"></div>
+          <div class="text-center mt-6">
+            <button id="next-q-btn" class="bg-gray-400 text-white font-bold py-2 px-6 rounded-lg cursor-not-allowed" disabled>다음 문제</button>
+          </div>`;
+        const opts = inner.querySelectorAll('.quiz-option');
+        let answered=false;
+        opts.forEach(el=>{
+          el.addEventListener('click',()=>{
+            if (answered) return;
+            answered=true;
+            const ok = el.textContent===q.correctAnswer;
+            if (ok){ score += 10; el.classList.add('correct'); inner.querySelector('#feedback').innerHTML=`<p class="text-green-600 font-bold">정답입니다!</p>`; }
+            else{
+              el.classList.add('incorrect');
+              inner.querySelector('#feedback').innerHTML=`<p class="text-red-600 font-bold">오답입니다. 정답: '${q.correctAnswer}'</p>`;
+              opts.forEach(o=>{ if (o.textContent===q.correctAnswer) o.classList.add('correct'); });
+            }
+            const next = document.getElementById('next-q-btn');
+            next.disabled=false; next.classList.remove('bg-gray-400','cursor-not-allowed'); next.classList.add('bg-indigo-600','hover:bg-indigo-700');
+          });
+        });
+        document.getElementById('next-q-btn').addEventListener('click',()=>{ idx++; showQ(); });
+      }
+      function showResult(){
+        inner.innerHTML = `
+          <h3 class="text-2xl font-bold text-center mb-4">퀴즈 결과</h3>
+          <p class="text-4xl font-bold text-center text-indigo-600 mb-6">${score} / ${qs.length}</p>
+          <p class="text-center text-slate-600">${(score/qs.length)>=0.8?'훌륭해요!':'조금 더 연습해볼까요?'}</p>
+          <div class="text-center mt-8">
+            <button id="retry-quiz-btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 transition-colors">다른 문제 풀기</button>
+          </div>`;
+        document.getElementById('retry-quiz-btn').addEventListener('click',()=>startQuiz(container,chapter));
+      }
+      showQ();
+    }
+    function setupQuizPage(){
+      const wrap = document.getElementById('quiz-container');
+      wrap.addEventListener('click',(e)=>{
+        if (e.target.classList.contains('quiz-start-btn')) startQuiz(wrap, e.target.dataset.chapter);
+      });
+    }
+
+    // ==== 게임 ====
+    function showScoreInputModal(score){
+      document.getElementById('final-score').textContent = score;
+      document.getElementById('score-modal').classList.remove('hidden');
+      document.getElementById('nickname-input').focus();
+    }
+    function hideScoreInputModal(){
+      document.getElementById('score-modal').classList.add('hidden');
+      document.getElementById('nickname-input').value='';
+    }
+    function checkTop10(score){
+      if (rankings.length<10) return true;
+      return score > rankings[rankings.length-1].score;
+    }
+
+    const MAX_WORDS_ON_SCREEN = 8; // 🔧 동시에 화면에 보일 수 있는 단어 최대 개수
+    const MIN_SPAWN_GAP_X = 12;    // 단어들 사이 최소 가로 여유(px)
+    const TOP_COLLISION_BAND = 64; // y가 이 범위(상단 밴드) 안에 있는 단어들과만 충돌 검사
+    const WORD_LINE_HEIGHT = 38;   // 영어(20) + 간격 + 한글(16) 대략 총 높이
+    const MAX_SPAWN_TRIES = 12;    // 겹치면 좌표 재시도 횟수
+
+
+    function setupGamePage(){
+      const canvas=document.getElementById('game-canvas');
+      const ctx=canvas.getContext('2d');
+      const typingInput=document.getElementById('typing-input');
+      const startButton=document.getElementById('start-game');
+      const scoreEl=document.getElementById('score');
+      const livesEl=document.getElementById('lives');
+      if (!canvas||!ctx||!typingInput||!startButton) return;
+
+        // 단어 -> 간단 한국어 의미 매핑
+        const meaningMap = new Map();
+        (function buildMeaningMap(){
+        const all = Object.values(vocabData).flat();
+        const simpleMeaning = (s) => {
+            if (typeof s !== 'string') return '';
+            // 괄호 설명 제거 후, 첫 문장만
+            return s.replace(/\s*\(.*?\)\s*/g, '').split(/[.;]/)[0].trim();
+        };
+        for (const item of all) {
+            if (item?.word && item?.meanings?.general) {
+            meaningMap.set(item.word, simpleMeaning(item.meanings.general));
+            }
+        }
+        })();
+
+      function renderScore() {
+        const margin = 12;
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px "Noto Sans KR", sans-serif';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`Score: ${score}`, margin, margin);
+        ctx.restore();
+      }
+
+      function renderLives() {
+            const margin = 12;        // 우측/상단 여백
+            const size = 22;          // 하트 이모지 폰트 크기 (px)
+            const gap = 6;            // 하트 간격
+            ctx.save();
+            ctx.textBaseline = 'top';
+            ctx.font = `${size}px "Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji","Noto Sans KR",sans-serif`;
+
+            // 남은 목숨만큼 빨간 하트(❤)를 오른쪽에서 왼쪽으로 배치
+            for (let i = 0; i < lives; i++) {
+                const x = canvas.width - margin - (i + 1) * size - i * gap;
+                const y = margin;
+                ctx.fillText('❤', x, y);
+            }
+        ctx.restore();
+        }
+
+      let gameActive=false, score=0, lives=5, words=[], spawnTimer=null, animId=null;
+      const allWords = Object.values(vocabData).flat().map(w=>w.word);
+
+      function resizeCanvas(){
+        const w = Math.min(canvas.parentElement.clientWidth-32, 800);
+        canvas.width = w; canvas.height = Math.max(320, Math.floor(w*(5/8)));
+      }
+      resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+      updateTopScoreDisplay();
+
+      const WORD_SPEED = 0.3; // 🔹모든 단어가 동일하게 떨어지는 속도(더 느리게). 필요시 0.6~1.0 사이로 조절.
+
+    //   function spawnWord(){
+    //     if (!gameActive||!allWords.length) return;
+        
+    //     // 👉 화면 상 최대 단어 개수 제한
+    //     if (words.length >= MAX_WORDS_ON_SCREEN) return;
+
+    //     const text = allWords[Math.floor(Math.random()*allWords.length)];
+    //     // ctx.font='20px Noto Sans KR, sans-serif';
+    //     // const tw = ctx.measureText(text).width||80;
+    //     // const pad=20, x = Math.floor(Math.random()*(canvas.width - tw - pad*2))+pad;
+
+    //     // const speedBase = 1.2 + Math.min(score/20, 4);
+    //     // const speed = speedBase + Math.random()*1.5;
+    //     // words.push({text,x,y:-10,speed});
+    //      const mean = meaningMap.get(text) || '';
+    //       const pad = 20;
+
+    //       // 두 줄 중 더 긴 폭으로 배치
+    //       ctx.font = '20px Noto Sans KR, sans-serif';
+    //       const wEng = ctx.measureText(text).width;
+    //      ctx.font = '16px Noto Sans KR, sans-serif';
+    //       const wKor = ctx.measureText(mean).width;
+    //       const lineWidth = Math.max(wEng, wKor, 80);
+    //       const x = Math.floor(Math.random() * Math.max(1, (canvas.width - lineWidth - pad*2))) + pad;
+
+
+    //     // const speed = WORD_SPEED;
+    //     // words.push({ text, x, y:-10, speed });
+    //       const speed = WORD_SPEED;
+    //       words.push({ text, meaning: mean, x, y: -10, speed });
+    //   }
+    function spawnWord() {
+        if (!gameActive || !allWords.length) return;
+        if (words.length >= MAX_WORDS_ON_SCREEN) return; // 화면 최대 개수 제한
+
+        const text = allWords[Math.floor(Math.random() * allWords.length)];
+        const mean = meaningMap.get(text) || '';
+        const pad = 20;
+
+        // 두 줄 중 더 긴 폭으로 폭 계산
+        ctx.font = '20px Noto Sans KR, sans-serif';
+        const wEng = ctx.measureText(text).width;
+        ctx.font = '16px Noto Sans KR, sans-serif';
+        const wKor = ctx.measureText(mean).width;
+        const lineWidth = Math.max(wEng, wKor, 80);
+        const height = mean ? WORD_LINE_HEIGHT : 24;
+
+        // 기존 단어들과 겹치지 않도록 여러 번 시도
+        let x = 0;
+        let y = -10; // 스폰 시작 y
+        let ok = false;
+
+        for (let tries = 0; tries < MAX_SPAWN_TRIES; tries++) {
+            x = Math.floor(
+            Math.random() * Math.max(1, (canvas.width - lineWidth - pad * 2))
+            ) + pad;
+
+            // 새 박스(상단 밴드 내)와 기존 단어들 박스가 겹치는지 확인
+            const newBox = { x, y, w: lineWidth, h: height };
+
+            const overlap = words.some((w) => {
+            // 상단 밴드에 있는 단어만 검사(막 스폰된 단어들 위주)
+            if (w.y > TOP_COLLISION_BAND) return false;
+            const otherBox = { x: w.x, y: w.y, w: w.width || lineWidth, h: w.height || height };
+
+            // 마진을 둔 AABB 충돌
+            const gx = MIN_SPAWN_GAP_X;
+            const gy = 6;
+            const noOverlap =
+                newBox.x + newBox.w + gx < otherBox.x ||
+                otherBox.x + otherBox.w + gx < newBox.x ||
+                newBox.y + newBox.h + gy < otherBox.y ||
+                otherBox.y + otherBox.h + gy < newBox.y;
+
+            return !noOverlap;
+            });
+
+            if (!overlap) { ok = true; break; }
+        }
+
+        if (!ok) {
+            // 이번 스폰은 건너뜀 — 다음 틱에 다시 시도
+            return;
+        }
+
+        const speed = WORD_SPEED; // 고정 속도 유지
+        words.push({ text, meaning: mean, x, y, speed, width: lineWidth, height });
+        }
+
+      function draw(){
+        if (!gameActive) return;
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.font='20px Noto Sans KR, sans-serif';
+        ctx.textBaseline='top';
+        for (let i=words.length-1;i>=0;i--){
+          const w=words[i]; w.y+=w.speed; 
+        //   ctx.fillStyle='#fff'; ctx.fillText(w.text,w.x,w.y);
+
+         // 영어
+        ctx.font = '20px Noto Sans KR, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(w.text, w.x, w.y);
+        // 한글 뜻 (영어 아래 22px 위치, 약간 옅은 흰색)
+        if (w.meaning) {
+            ctx.font = '16px Noto Sans KR, sans-serif';
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 2;
+            ctx.fillText(w.meaning, w.x, w.y + 22);
+        }
+
+        //   if (w.y>canvas.height-24){
+        // 두 줄 높이 고려(영어20 + 간격2 + 한글16 ~= 38)
+        // const bottomY = w.meaning ? (w.y + 38) : (w.y + 24);
+        const bottomY = w.y + (w.height || (w.meaning ? WORD_LINE_HEIGHT : 24));
+        if(bottomY > canvas.height){
+            words.splice(i,1); lives-=1; livesEl.textContent=lives;
+            if (lives<=0){ endGame(); return; }
+          }
+        }
+
+        // 🔹좌측 상단 점수
+        renderScore();
+
+        // 🔸최상단에 하트 렌더
+        renderLives();
+        animId = requestAnimationFrame(draw);
+      }
+
+      function handleInput(e){
+        if (!gameActive) return;
+        const val = typingInput.value.trim();
+        if (e.key==='Enter' && val.length>0){
+          let matched=-1, maxY=-Infinity;
+          for (let i=0;i<words.length;i++){
+            if (words[i].text.toLowerCase()===val.toLowerCase()){
+              if (words[i].y>maxY){ maxY=words[i].y; matched=i; }
+            }
+          }
+          if (matched!==-1){
+            words.splice(matched,1);
+            score+=10; scoreEl.textContent=score;
+          }
+          typingInput.value='';
+        }
+      }
+
+      function startGame(){
+        if (gameActive) return;
+        gameActive=true; score=0; lives=5; words=[];
+        scoreEl.textContent='0'; livesEl.textContent='5';
+        typingInput.disabled=false; typingInput.value=''; typingInput.focus();
+        startButton.disabled=true; startButton.classList.add('opacity-60','cursor-not-allowed');
+        spawnTimer && clearInterval(spawnTimer);
+        spawnTimer=setInterval(spawnWord,1200); spawnWord();
+        animId && cancelAnimationFrame(animId); animId=requestAnimationFrame(draw);
+      }
+
+      async function endGame(){
+        gameActive=false;
+        animId && cancelAnimationFrame(animId);
+        spawnTimer && clearInterval(spawnTimer);
+        typingInput.disabled=true;
+        startButton.disabled=false; startButton.classList.remove('opacity-60','cursor-not-allowed');
+
+        const qualifies = checkTop10(score);
+        if (qualifies) showScoreInputModal(score);
+        else alert(`게임 종료! 점수: ${score}`);
+
+        await loadRankings(); // 종료 후 최신 랭킹 반영
+        updateTopScoreDisplay();
+      }
+
+      startButton.addEventListener('click', startGame);
+      typingInput.addEventListener('keydown', handleInput);
+      document.addEventListener('visibilitychange', ()=>{ if (document.hidden && gameActive) endGame(); });
+    }
+
+    // ==== 플래시카드 ====
+    function setupFlashcardsPage(){
+      const sel = document.getElementById('flashcard-chapter-select');
+      const area = document.getElementById('flashcard-area');
+      let currentWords=[], idx=0;
+
+      function renderUI(){
+        if (!currentWords.length){ area.innerHTML=`<p class="text-slate-500">학습할 챕터를 선택하세요.</p>`; return; }
+        const w = currentWords[idx];
+        area.innerHTML = `
+          <div class="flashcard-container w-full max-w-md h-56 sm:h-64 mb-4">
+            <div class="flashcard relative w-full h-full cursor-pointer">
+              <div class="flashcard-front absolute w-full h-full bg-white rounded-lg shadow-lg flex items-center justify-center p-6 border-2 border-indigo-200">
+                <span class="text-3xl sm:text-4xl font-bold text-indigo-700 text-center">${w.word}</span>
+              </div>
+              <div class="flashcard-back absolute w-full h-full bg-indigo-100 rounded-lg shadow-lg flex flex-col items-center justify-center p-6 border-2 border-indigo-200">
+                <p class="text-slate-800 text-center text-base sm:text-lg">${w.meanings.general||''}</p>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center justify-center gap-4 w-full max-w-md">
+            <button id="prev-card" class="p-2 rounded-full bg-slate-200 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed">◀</button>
+            <p id="card-progress" class="text-slate-600 font-medium">${idx+1} / ${currentWords.length}</p>
+            <button id="next-card" class="p-2 rounded-full bg-slate-200 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed">▶</button>
+          </div>
+        `;
+        document.querySelector('.flashcard').addEventListener('click',(e)=>e.currentTarget.classList.toggle('is-flipped'));
+        const prev=document.getElementById('prev-card'), next=document.getElementById('next-card');
+        prev.disabled = idx===0; next.disabled = idx===currentWords.length-1;
+        prev.addEventListener('click',()=>{ if (idx>0){ idx--; renderUI(); } });
+        next.addEventListener('click',()=>{ if (idx<currentWords.length-1){ idx++; renderUI(); } });
+      }
+
+      sel.addEventListener('change', ()=>{
+        const ch = sel.value;
+        if (ch && vocabData[ch]){ currentWords = vocabData[ch]; idx=0; renderUI(); }
+        else { currentWords=[]; renderUI(); }
+      });
+      renderUI();
+    }
+
+    // ==== 공통 이벤트 바인딩 ====
+    function setupCommonEvents(){
+      navTabs.forEach(tab => tab.addEventListener('click', ()=>render(tab.dataset.tab)));
+
+      contentArea.addEventListener('click', (e)=>{
+        if (e.target.closest('.nav-tab-link')){
+          e.preventDefault(); render(e.target.closest('.nav-tab-link').dataset.tab);
+        }
+        if (e.target.closest('.bookmark-icon')){
+          const w = e.target.closest('.bookmark-icon').dataset.word; toggleBookmark(w);
+        }
+        if (e.target.closest('.speak-icon')){
+          const w = e.target.closest('.speak-icon').dataset.word; speak(w);
+        }
+        if (e.target.closest('#start-chapter-quiz')){
+          const ch = e.target.closest('#start-chapter-quiz').dataset.chapter;
+          render('quiz'); setTimeout(()=>startQuiz(document.getElementById('quiz-container'), ch),0);
+        }
+      });
+
+      modal.addEventListener('click',(e)=>{
+        if (e.target.id==='word-modal') closeWordModal();
+        if (e.target.closest('.bookmark-icon')){
+          const w = e.target.closest('.bookmark-icon').dataset.word;
+          toggleBookmark(w); e.target.closest('.bookmark-icon').classList.toggle('bookmarked');
+        }
+        if (e.target.closest('.speak-icon')){
+          const w = e.target.closest('.speak-icon').dataset.word; speak(w);
+        }
+      });
+
+      // 점수 저장 모달
+      document.getElementById('save-score-btn').addEventListener('click', async ()=>{
+        const nickname = document.getElementById('nickname-input').value.trim();
+        if (!nickname) return alert('닉네임을 입력해주세요.');
+        const score = parseInt(document.getElementById('final-score').textContent||'0',10);
+        const ok = await RankingsAPI.saveScore(nickname, score);
+        if (ok){
+          hideScoreInputModal();
+          await loadRankings();
+          // 랭킹 탭이 열려있다면 갱신
+          if (document.querySelector('[data-tab="ranking"]').classList.contains('tab-active')) renderRankingPage();
+          alert('점수가 저장되었습니다!');
+        } else {
+          alert('점수 저장에 실패했습니다.');
+        }
+      });
+      document.getElementById('cancel-score-btn').addEventListener('click', hideScoreInputModal);
+      document.getElementById('nickname-input').addEventListener('keypress',(e)=>{ if (e.key==='Enter') document.getElementById('save-score-btn').click(); });
+    }
+
+    // ==== 초기화 ====
+    document.addEventListener('DOMContentLoaded', async ()=>{
+      loadBookmarks();
+      render('home');
+      setupCommonEvents();
+      // 시작 시 랭킹 미리 로드(게임 화면의 "현재 최고 기록" 표시용)
+      await loadRankings();
+    });
+  
+
+
+// --- 방명록 API (Firestore 우선, 실패 시 로컬 폴백) ---
+const GuestbookAPI = {
+  colRef: collection(db, "guestbook"),
+
+  async addEntry({ author, text }) {
+    await ensureAuth();
+    const user = auth.currentUser;
+    const payload = {
+      author: (author || "익명").slice(0, 24),
+      text: (text || "").trim().slice(0, 1000),
+      likeCount: 0,
+      dislikeCount: 0,
+      createdAt: serverTimestamp(),
+      uid: user?.uid || null
+    };
+    if (!payload.text) throw new Error("내용을 입력하세요.");
+    try {
+      await addDoc(this.colRef, payload);
+      return { ok: true };
+    } catch (e) {
+      console.warn("guestbook addEntry 실패:", e);
+      const list = JSON.parse(localStorage.getItem("kindredGuestbook") || "[]");
+      list.push({ ...payload, createdAt: Date.now(), id: "local-" + Math.random().toString(36).slice(2) });
+      localStorage.setItem("kindredGuestbook", JSON.stringify(list));
+      return { ok: true, local: true };
+    }
+  },
+
+  // 교체용: GuestbookAPI.subscribe
+subscribe({ orderByField = "createdAt", direction = "desc" }, onChange) {
+    try {
+      const parts = [];
+
+      // 1차 정렬
+      parts.push(orderBy(orderByField, direction));
+
+      // 2차 정렬(동점 타이브레이커) — createdAt이 1차가 아닐 때만 추가
+      if (orderByField !== "createdAt") {
+        parts.push(orderBy("createdAt", "desc"));
+      }
+
+      const qRef = query(this.colRef, ...parts);
+      const unsub = onSnapshot(qRef, (snap) => {
+        const items = [];
+        snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+        onChange(items);
+      });
+      return unsub;
+    } catch (e) {
+      console.warn("guestbook subscribe 실패, 로컬 폴백:", e);
+      const loadLocal = () => {
+        const raw = JSON.parse(localStorage.getItem("kindredGuestbook") || "[]");
+        const key = orderByField;
+        const sorted = raw
+          .sort((a, b) => (b[key] || 0) - (a[key] || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+        onChange(sorted);
+      };
+      loadLocal();
+      return () => {};
+    }
+  },
+
+
+  async vote({ id, type }) { // type: "like" | "dislike"
+    await ensureAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error("로그인 필요");
+    const entryRef = doc(db, "guestbook", id);
+    const voteRef  = doc(db, "guestbook", id, "votes", user.uid);
+
+    // 본인 글 차단
+    const entrySnap = await getDoc(entryRef);
+    if (entrySnap.exists() && entrySnap.data()?.uid && entrySnap.data().uid === user.uid) {
+      return { ok:false, reason: "본인 글에는 투표할 수 없습니다" };
+    }
+
+    // 중복 투표 차단
+    const voted = await getDoc(voteRef);
+    if (voted.exists()) return { ok:false, reason: "이미 투표했습니다" };
+
+    try {
+      await updateDoc(entryRef, { [type+"Count"]: increment(1) });
+      await setDoc(voteRef, { type, at: serverTimestamp() });
+      return { ok:true };
+    } catch (e) {
+      console.warn("vote 실패:", e);
+      const raw = JSON.parse(localStorage.getItem("kindredGuestbook") || "[]");
+      const i = raw.findIndex(x=>x.id===id);
+      if (i>-1) {
+        const key = type+"Count";
+        raw[i][key] = (raw[i][key]||0)+1;
+        localStorage.setItem("kindredGuestbook", JSON.stringify(raw));
+      }
+      return { ok:true, local:true };
+    }
+  }
+};
+
+
+
+templates.guestbook = `
+  <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+      <h2 class="text-3xl font-bold text-indigo-600">방명록</h2>
+      <div class="flex items-center gap-2">
+        <label for="guestbook-sort" class="text-slate-600">정렬:</label>
+        <select id="guestbook-sort" class="p-2 border border-slate-300 rounded-md bg-white">
+          <option value="createdAt:desc">최신순</option>
+          <option value="likeCount:desc">Like순</option>
+          <option value="dislikeCount:desc">DisLike순</option>
+        </select>
+      </div>
+    </div>
+    <form id="guestbook-form" class="space-y-3 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+        <input id="guestbook-author" maxlength="24" placeholder="닉네임 (선택)" class="md:col-span-2 p-3 border border-slate-300 rounded-lg" />
+        <textarea id="guestbook-text" rows="2" maxlength="1000" placeholder="사용 소감을 남겨주세요" class="md:col-span-4 p-3 border border-slate-300 rounded-lg"></textarea>
+      </div>
+      <div class="flex justify-end">
+        <button class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700">등록</button>
+      </div>
+    </form>
+    <div id="guestbook-list" class="space-y-3">
+      <div class="text-center py-8">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+        <p class="text-slate-600 mt-4">불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+`;
+</script>
+</body>
+</html>
