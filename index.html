@@ -114,15 +114,35 @@
     const auth = getAuth(app);
 
     // (권장) 익명 로그인 사용 — 쓰기 규칙에서 auth != null 요구 시 필요
-    async function ensureAuth() {
-      return new Promise((resolve) => {
-        onAuthStateChanged(auth, async (user) => {
-          if (user) return resolve(true);
-          try { await signInAnonymously(auth); resolve(true); }
-          catch (e) { console.error("Anonymous sign-in failed:", e); resolve(false); }
-        });
-      });
-    }
+    
+let __anonBackoffUntil = 0;
+/**
+ * ensureAuth({ allowAnonymous }): 
+ *  - if user already signed in (google or anonymous) -> true
+ *  - if not signed in:
+ *      - allowAnonymous=true  -> try signInAnonymously with backoff
+ *      - allowAnonymous=false -> do NOT auto sign-in (return false)
+ */
+async function ensureAuth(allowAnonymous = false) {
+  try {
+    if (auth.currentUser) return true;
+  } catch (e) {
+    return false;
+  }
+  if (!allowAnonymous) return false;
+  const now = Date.now();
+  if (now < __anonBackoffUntil) return false;
+  try {
+    await signInAnonymously(auth);
+    return true;
+  } catch (e) {
+    // Backoff: 10m for rate limit, 1m otherwise
+    __anonBackoffUntil = now + (e && e.code === "auth/too-many-requests" ? 10*60*1000 : 60*1000);
+    console.warn("Anonymous sign-in suppressed:", e && e.code ? e.code : e);
+    return false;
+  }
+}
+
 
     /* ============================
        🧠 기존 앱 코드 (간결화)
@@ -132,7 +152,7 @@
     const RankingsAPI = {
       async loadTop10() {
         try {
-          await ensureAuth(); // 규칙에 따라 필요 없으면 삭제 가능
+          /* no auth needed for read */ // 규칙에 따라 필요 없으면 삭제 가능
           const q = query(collection(db, "rankings"), orderBy("score", "desc"), limit(10));
           const snap = await getDocs(q);
           const list = [];
@@ -158,7 +178,7 @@
           nickname, score, date: new Date().toLocaleDateString()
         };
         try {
-          await ensureAuth();
+          await ensureAuth(true);
           await addDoc(collection(db, "rankings"), payload);
           return true;
         } catch (e) {
@@ -173,7 +193,7 @@
         try {
           const arr = JSON.parse(raw) || [];
           return arr.sort((a,b)=>b.score-a.score).slice(0,10);
-        } catch { return []; }
+        } catch (e) { return []; }
       },
       _saveToLocal(item) {
         try {
@@ -182,7 +202,7 @@
           arr.sort((a,b)=>b.score-a.score);
           localStorage.setItem("kindredRankings", JSON.stringify(arr.slice(0,10)));
           return true;
-        } catch { return false; }
+        } catch (e) { return false; }
       }
     };
 
@@ -1200,7 +1220,7 @@ const GuestbookAPI = {
   colRef: collection(db, "guestbook"),
 
   async addEntry({ author, text }) {
-    await ensureAuth();
+    await ensureAuth(true);
     const user = auth.currentUser;
     const payload = {
       author: (author || "익명").slice(0, 24),
@@ -1259,7 +1279,7 @@ subscribe({ orderByField = "createdAt", direction = "desc" }, onChange) {
 
 
   async vote({ id, type }) { // type: "like" | "dislike"
-    await ensureAuth();
+    await ensureAuth(true);
     const user = auth.currentUser;
     if (!user) throw new Error("로그인 필요");
     const entryRef = doc(db, "guestbook", id);
@@ -1326,5 +1346,210 @@ templates.guestbook = `
   </div>
 `;
 </script>
+
+<!-- ===== Admin Delete Module v3 (lockup-safe, COOP-safe, idempotent) ===== -->
+
+<!-- ===== Admin Delete Module v4 (popup login + logout, guestbook-only, idempotent) ===== -->
+<script type="module" id="admin-delete-v4">
+import { getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+import { getFirestore, collection, getDocs, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+// Reuse existing Firebase app
+const app = getApps()[0] || getApp();
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+// Global admin flag
+window.__isAdmin = !!window.__isAdmin;
+
+// RAF-throttled UI update
+let rafQueued = false;
+function scheduleUIUpdate() {
+  if (rafQueued) return;
+  rafQueued = true;
+  requestAnimationFrame(() => {
+    rafQueued = false;
+    injectAuthButtons();
+    attachDeleteButtons();
+  });
+}
+
+// expose refresh hooks for tab switching
+window.__gbAdminRefresh = scheduleUIUpdate;
+// expose refresh hooks for tab switching
+window.__gbAdminRefresh = scheduleUIUpdate;
+
+
+
+function isGoogleSession() {
+  const u = auth.currentUser;
+  if (!u || u.isAnonymous) return false;
+  const pd = Array.isArray(u.providerData) ? u.providerData : [];
+  return pd.some(p => p && p.providerId === "google.com");
+}
+
+// Buttons at guestbook toolbar
+function injectAuthButtons() {
+  const sortSel = document.getElementById("guestbook-sort");
+  if (!sortSel) return;
+  const host = sortSel.parentElement || sortSel;
+
+  let inBtn = document.getElementById("adminSignIn");
+  if (!inBtn) {
+    inBtn = document.createElement("button");
+    inBtn.id = "adminSignIn";
+    inBtn.type = "button";
+    inBtn.textContent = "관리자 로그인";
+    inBtn.className = "ml-2 px-3 py-2 rounded-lg bg-slate-700 text-white text-sm hover:bg-slate-800";
+    host.appendChild(inBtn);
+  }
+
+  let outBtn = document.getElementById("adminSignOut");
+  if (!outBtn) {
+    outBtn = document.createElement("button");
+    outBtn.id = "adminSignOut";
+    outBtn.type = "button";
+    outBtn.textContent = "로그아웃";
+    outBtn.className = "ml-2 px-3 py-2 rounded-lg bg-slate-500 text-white text-sm hover:bg-slate-600";
+    outBtn.style.display = "none";
+    host.appendChild(outBtn);
+  }
+
+  // Re-bind events (avoid duplicate handlers by cloning)
+  const inClone = inBtn.cloneNode(true);
+  inBtn.parentNode.replaceChild(inClone, inBtn);
+  inClone.addEventListener("click", async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      try { await signInWithRedirect(auth, provider); }
+      catch(e2) { alert("관리자 로그인 실패: " + (e2 && e2.message ? e2.message : e2)); }
+    }
+  }, { once: true });
+
+  const outClone = outBtn.cloneNode(true);
+  outBtn.parentNode.replaceChild(outClone, outBtn);
+  outClone.addEventListener("click", async () => {
+    try {
+      await signOut(auth);
+      window.__isAdmin = false;
+      // Remove delete buttons if any
+      const list = document.getElementById("guestbook-list");
+      if (list) list.querySelectorAll(".gb-delete").forEach(el => el.remove());
+      scheduleUIUpdate();
+    } catch (e) {
+      alert("로그아웃 실패: " + (e && e.message ? e.message : e));
+    }
+  }, { once: true });
+
+  const google = isGoogleSession();
+  inClone.style.display  = google ? "none" : "";
+  outClone.style.display = google ? "" : "none";
+}
+
+// Admin flag check (non-blocking)
+async function refreshAdminFlag() {
+  const u = auth.currentUser;
+  if (!u || !isGoogleSession()) { window.__isAdmin = false; scheduleUIUpdate(); return; }
+window.__gbAdminRefreshAuth = refreshAdminFlag;
+  try {
+    const snap = await getDoc(doc(db, "admins", u.uid));
+    window.__isAdmin = !!(snap.exists() && snap.data() && snap.data().isAdmin === true);
+  } catch (e) {
+    window.__isAdmin = false;
+  }
+  scheduleUIUpdate();
+}
+
+// Delete helper (votes/* -> main doc)
+window.deleteGuestbookWithVotes = async function(entryId) {
+  const votesRef = collection(db, "guestbook", entryId, "votes");
+  const snap = await getDocs(votesRef);
+  const tasks = [];
+  snap.forEach(d => tasks.push(deleteDoc(doc(db, "guestbook", entryId, "votes", d.id))));
+  await Promise.all(tasks);
+  await deleteDoc(doc(db, "guestbook", entryId));
+};
+
+// Attach delete buttons (idempotent)
+function attachDeleteButtons() {
+  if (!window.__isAdmin) return;
+  const list = document.getElementById("guestbook-list");
+  if (!list) return;
+
+  const cards = list.querySelectorAll(".card, .rounded-xl.border, [data-gb-item]");
+  const collectionLike = cards.length ? cards : list.children;
+
+  Array.from(collectionLike).forEach(card => {
+    if (card.dataset.gbDeleteBound === "1") return;
+
+    const likeBtn = card.querySelector('.gb-like, [data-type="like"]');
+    const id = (likeBtn && likeBtn.getAttribute("data-id")) || card.getAttribute("data-id");
+    if (!id) return;
+
+    let headerRight =
+      card.querySelector(".flex.items-center.gap-2") ||
+      card.querySelector(".flex.justify-between .flex.items-center") ||
+      card.querySelector(".flex.justify-between > div:last-child") ||
+      card;
+
+    if (!card.querySelector(".gb-delete")) {
+      const btn = document.createElement("button");
+      btn.className = "gb-delete text-sm text-red-600 ml-2";
+      btn.type = "button";
+      btn.textContent = "🗑️ 삭제";
+      btn.addEventListener("click", async () => {
+        if (!window.__isAdmin) return alert("관리자만 삭제할 수 있습니다.");
+        if (!confirm("이 글을 삭제할까요? 되돌릴 수 없습니다.")) return;
+        try { await window.deleteGuestbookWithVotes(id); }
+        catch(e){ alert("삭제 실패: " + (e && e.message ? e.message : e)); }
+      });
+      headerRight.appendChild(btn);
+    }
+    card.dataset.gbDeleteBound = "1";
+  });
+}
+
+// Observe guestbook list for changes (no self-trigger loops)
+const listObserver = new MutationObserver(() => scheduleUIUpdate());
+const rootObserver = new MutationObserver(() => {
+  const list = document.getElementById("guestbook-list");
+  if (list && !listObserver._observing) {
+    listObserver.observe(list, { childList: true, subtree: true });
+    listObserver._observing = true;
+    scheduleUIUpdate();
+  }
+});
+rootObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+// Handle redirect result (COOP-safe)
+getRedirectResult(auth).then(() => refreshAdminFlag()).catch((e)=>{});
+
+// Auth state changes
+onAuthStateChanged(auth, () => refreshAdminFlag());
+
+// Initial kick
+setTimeout(() => refreshAdminFlag(), 500);
+
+// Re-sync UI when user switches tabs or URL hash changes (guestbook <-> ranking)
+document.addEventListener("click", (e) => {
+  const t = e.target && (e.target.closest ? e.target.closest('[data-tab]') : null);
+  if (t) {
+    setTimeout(() => {
+      if (typeof window.__gbAdminRefreshAuth === "function") window.__gbAdminRefreshAuth();
+      if (typeof window.__gbAdminRefresh === "function") window.__gbAdminRefresh();
+    }, 80);
+  }
+});
+window.addEventListener("hashchange", () => {
+  if (typeof window.__gbAdminRefreshAuth === "function") window.__gbAdminRefreshAuth();
+  if (typeof window.__gbAdminRefresh === "function") window.__gbAdminRefresh();
+});
+
+</script>
+
+
 </body>
 </html>
