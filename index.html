@@ -407,9 +407,15 @@
           </div>
           <div class="text-center">
             <canvas id="game-canvas" class="mx-auto"></canvas>
-            <div class="mt-4">
+            
+<div class="mt-4">
               <input type="text" id="typing-input" placeholder="여기에 단어를 입력하세요" class="p-3 border-2 border-slate-300 rounded-lg w-full md:w-1/2 text-center text-xl" disabled>
             </div>
+            <div class="mt-3 flex justify-center gap-6 text-slate-700 text-lg" id="game-hud">
+              <div>Score: <span id="score">0</span></div>
+              <div>Lives: <span id="lives">5</span></div>
+            </div>
+
             <div class="mt-6 text-center">
               <p class="text-slate-600 mb-2">현재 최고 기록</p>
               <div id="current-top-score" class="text-2xl font-bold text-indigo-600">-</div>
@@ -1024,7 +1030,7 @@
         // const bottomY = w.meaning ? (w.y + 38) : (w.y + 24);
         const bottomY = w.y + (w.height || (w.meaning ? WORD_LINE_HEIGHT : 24));
         if(bottomY > canvas.height){
-            words.splice(i,1); lives-=1; livesEl.textContent=lives;
+            words.splice(i,1); lives-=1; if (livesEl) livesEl.textContent=lives;
             if (lives<=0){ endGame(); return; }
           }
         }
@@ -1049,7 +1055,7 @@
           }
           if (matched!==-1){
             words.splice(matched,1);
-            score+=10; scoreEl.textContent=score;
+            score+=10; if (scoreEl) scoreEl.textContent=score;
           }
           typingInput.value='';
         }
@@ -1058,7 +1064,7 @@
       function startGame(){
         if (gameActive) return;
         gameActive=true; score=0; lives=5; words=[];
-        scoreEl.textContent='0'; livesEl.textContent='5';
+        if (scoreEl) scoreEl.textContent='0'; if (livesEl) livesEl.textContent='5';
         typingInput.disabled=false; typingInput.value=''; typingInput.focus();
         startButton.disabled=true; startButton.classList.add('opacity-60','cursor-not-allowed');
         spawnTimer && clearInterval(spawnTimer);
