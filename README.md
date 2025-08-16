@@ -1,5 +1,8 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/911d4bcb-39b7-4139-9b6b-71a41bb5e9ea/deploy-status)](https://app.netlify.com/projects/melodic-daifuku-7dd0e1/deploys)
 
+# 🌐 아래의 싸이트에서 체험하세요.
+https://melodic-daifuku-7dd0e1.netlify.app
+
 # 🌐 Kindred Vocabulary
 
 Kindred Vocabulary는 옥타비아 버틀러의 소설 **『킨드레드』** 속 핵심 어휘를 중심으로 학습과 게임, 피드백을 결합한 웹 애플리케이션입니다.  
