@@ -14,8 +14,17 @@
     .quiz-option.incorrect{background:#fee2e2;border-color:#ef4444}
     #word-modal{transition:opacity .3s}
     #modal-content{transition:transform .3s}
-    #game-canvas{background:linear-gradient(to bottom,#1e3a8a,#3730a3);border-radius:.5rem;border:2px solid #a5b4fc;width:100%;height:auto;aspect-ratio:8/5;display: block;
-      max-height: calc(100vh - 220px);}
+    #game-canvas{
+  background:linear-gradient(to bottom,#1e3a8a,#3730a3);
+  border-radius:.5rem;border:2px solid #a5b4fc;
+  display:block; margin:0 auto;      /* 중앙 정렬 */
+  width:100%; height:auto; aspect-ratio:8/5; /* 자동 비율 */
+  max-width:100%;
+  max-height:calc(100vh - 220px);
+}
+@supports (height: 1svh){
+  #game-canvas{ max-height: calc(100svh - 220px); }
+}
     .bookmark-icon.bookmarked{color:#f59e0b}
     .flashcard-container{perspective:1000px}
     .flashcard{transition:transform .6s;transform-style:preserve-3d}
@@ -29,12 +38,7 @@
     .rank-1{background:linear-gradient(135deg,#ffd700,#ffed4e)}
     .rank-2{background:linear-gradient(135deg,#c0c0c0,#e5e5e5)}
     .rank-3{background:linear-gradient(135deg,#cd7f32,#daa520)}
-    /* 모바일 브라우저 툴바 변화 대응: 지원 시 svh 사용 */
-    @supports (height: 1svh) {
-      #game-canvas {
-        max-height: calc(100svh - 220px);
-      }
-    }
+
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -985,21 +989,28 @@ async function ensureAuth(allowAnonymous = false) {
       }
 
       function renderLives() {
-            const margin = 12;        // 우측/상단 여백
-            const size = 22;          // 하트 이모지 폰트 크기 (px)
-            const gap = 6;            // 하트 간격
-            ctx.save();
-            ctx.textBaseline = 'top';
-            ctx.font = `${size}px "Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji","Noto Sans KR",sans-serif`;
+        const margin = 12;        // 우측/상단 여백
+        const size   = 22;        // 하트 크기(px)
+        const gap    = 6;         // 하트 간격
+        const heart  = '\u2764\uFE0F'; // ❤️ (VS16 포함)
 
-            // 남은 목숨만큼 빨간 하트(❤)를 오른쪽에서 왼쪽으로 배치
-            for (let i = 0; i < lives; i++) {
-                const x = canvas.width - margin - (i + 1) * size - i * gap;
-                const y = margin;
-                ctx.fillText('❤', x, y);
-            }
-        ctx.restore();
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.textBaseline = 'top';
+        ctx.fillStyle    = '#ef4444';
+        ctx.font = `${size}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Noto Sans KR",sans-serif`;
+
+        // ★ 여기서 CSS 폭으로 환산해서 사용 (DPR 보정)
+        const scaleX   = (ctx.getTransform && ctx.getTransform().a) || (window.devicePixelRatio || 1);
+        const cssWidth = Math.round(canvas.width / scaleX);
+
+        for (let i = 0; i < lives; i++) {
+          const x = cssWidth - margin - (i + 1) * size - i * gap; // ← canvas.width 대신 cssWidth
+          const y = margin;
+          ctx.fillText(heart, x, y);
         }
+        ctx.restore();
+      }
 
       let gameActive=false, score=0, lives=5, words=[], spawnTimer=null, animId=null;
       const allWords = Object.values(vocabData).flat().map(w=>w.word);
