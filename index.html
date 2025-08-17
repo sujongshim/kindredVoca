@@ -14,7 +14,8 @@
     .quiz-option.incorrect{background:#fee2e2;border-color:#ef4444}
     #word-modal{transition:opacity .3s}
     #modal-content{transition:transform .3s}
-    #game-canvas{background:linear-gradient(to bottom,#1e3a8a,#3730a3);border-radius:.5rem;border:2px solid #a5b4fc;width:100%;height:auto;aspect-ratio:8/5}
+    #game-canvas{background:linear-gradient(to bottom,#1e3a8a,#3730a3);border-radius:.5rem;border:2px solid #a5b4fc;width:100%;height:auto;aspect-ratio:8/5;display: block;
+      max-height: calc(100vh - 220px);}
     .bookmark-icon.bookmarked{color:#f59e0b}
     .flashcard-container{perspective:1000px}
     .flashcard{transition:transform .6s;transform-style:preserve-3d}
@@ -28,6 +29,12 @@
     .rank-1{background:linear-gradient(135deg,#ffd700,#ffed4e)}
     .rank-2{background:linear-gradient(135deg,#c0c0c0,#e5e5e5)}
     .rank-3{background:linear-gradient(135deg,#cd7f32,#daa520)}
+    /* 모바일 브라우저 툴바 변화 대응: 지원 시 svh 사용 */
+    @supports (height: 1svh) {
+      #game-canvas {
+        max-height: calc(100svh - 220px);
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -1417,6 +1424,62 @@ templates.guestbook = `
     </div>
   </div>
 `;
+
+// ===== 게임 캔버스 자동 맞춤 =====
+  function fitGameCanvas() {
+    const canvas = document.getElementById('game-canvas');
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+
+    // 상단 UI(헤더+탭) 높이 측정
+    const header = document.querySelector('header');
+    const nav = document.querySelector('.nav-container');
+    const topChrome = (header?.offsetHeight || 0) + (nav?.offsetHeight || 0) + 32; // 여유 패딩
+    const availH = Math.max(200, window.innerHeight - topChrome - 16);
+
+    // 컨텐츠 가로폭
+    const content = document.getElementById('content-area');
+    const maxW = (content?.clientWidth || canvas.parentElement?.clientWidth || window.innerWidth);
+
+    // 게임 고정 비율 (8/5 = 1.6)
+    const aspect = 8 / 5;
+
+    // 가용 높이/너비에 맞게 계산
+    let targetW = Math.min(maxW, Math.floor(availH * aspect));
+    let targetH = Math.floor(targetW / aspect);
+    if (targetH > availH) { targetH = availH; targetW = Math.floor(targetH * aspect); }
+
+    // CSS 크기 적용
+    canvas.style.width = targetW + 'px';
+    canvas.style.height = targetH + 'px';
+
+    // 내부 해상도(dpr 반영) 적용 → 흐림 방지
+    const needW = Math.floor(targetW * dpr);
+    const needH = Math.floor(targetH * dpr);
+    if (canvas.width !== needW || canvas.height !== needH) {
+      canvas.width = needW;
+      canvas.height = needH;
+      const ctx = canvas.getContext('2d');
+      if (ctx && dpr !== 1) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // ⚠️ 게임 렌더 코드에서 자체 스케일을 쓰면 setTransform은 빼세요.
+    }
+  }
+
+  // 창/회전/탭 전환 시 반응
+  window.addEventListener('resize', fitGameCanvas);
+  window.addEventListener('orientationchange', fitGameCanvas);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(fitGameCanvas, 0); });
+
+  // "타이핑 게임" 탭 클릭 후 렌더가 끝났을 타이밍에 맞춰 재적용
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest?.('[data-tab="game"]');
+    if (t) setTimeout(fitGameCanvas, 0);
+  });
+
+  // 첫 로드 시 한 번
+  setTimeout(fitGameCanvas, 0);
+
 </script>
 
 <!-- ===== Admin Delete Module v3 (lockup-safe, COOP-safe, idempotent) ===== -->
